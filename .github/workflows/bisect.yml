@@ -1,4 +1,4 @@
-name: CI Bisect C
+name: CI Bisect D
 
 on:
   push:
@@ -7,15 +7,6 @@ on:
       - '.github/workflows/bisect.yml'
 
 jobs:
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - run: echo release-step
-
   test:
     runs-on: ubuntu-latest
     steps:
@@ -23,7 +14,7 @@ jobs:
 
   publish-npm:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test, test]
+    needs: [test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -31,6 +22,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: echo publish-step
-        if: ${{ secrets.NPM_TOKEN != '' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
