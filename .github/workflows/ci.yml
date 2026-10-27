@@ -86,8 +86,10 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact: desktop-windows
+          # rustup 没有 universal-apple-darwin 这个 target（那是 Tauri 的产物名）。
+          # macOS 改为构建当前 runner 架构的 aarch64-apple-darwin。
           - os: macos-latest
-            target: universal-apple-darwin
+            target: aarch64-apple-darwin
             artifact: desktop-macos
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
@@ -113,6 +115,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - run: pnpm install --frozen-lockfile
+      # Tauri 的 frontendDist 指向 apps/desktop/dist，
+      # 必须先构建桌面端前端，否则 tauri build 报
+      # "Unable to find your web assets, did you forget to build your web app?"
+      - run: pnpm --filter @md-studio/desktop build
       # 桌面签名：配置 Secrets 后取消注释 env（见 docs/DESKTOP-SIGNING.md）
       - name: Tauri build
         uses: tauri-apps/tauri-action@v0
