@@ -8,10 +8,18 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { render } from '../parser/pipeline';
 import { DEFAULT_TYPOGRAPHY } from '../types';
 
-const MD_PATH = 'D:/pro/Markdown-Studio/desktop-test/formats/format-matrix.md';
+// 夹具放在包内并随仓库提交：desktop-test/ 已被 .gitignore 排除，
+// 依赖它会让 CI 拿不到文件（ENOENT），且硬编码本机绝对路径无法跨机器运行。
+const MD_PATH = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  'fixtures',
+  'format-matrix.md'
+);
 
 let hast: any = null;
 let r: Awaited<ReturnType<typeof render>>;

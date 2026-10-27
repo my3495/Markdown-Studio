@@ -13,11 +13,11 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:1420',
     trace: 'on-first-retry',
-    /** 使用系统已装的 chromium-1243（避免重复下载） */
     channel: undefined as unknown as undefined,
     launchOptions: {
-      executablePath: process.env.CHROMIUM_PATH ??
-        'C:\\Users\\gaoqi\\AppData\\Local\\ms-playwright\\chromium-1243\\chrome-win64\\chrome.exe',
+      // 不写死本机路径：未设置 CHROMIUM_PATH 时交给 Playwright 用自带浏览器，
+      // 否则在别的机器 / CI 上会因找不到可执行文件而失败。
+      ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
     },
   },
   projects: [
