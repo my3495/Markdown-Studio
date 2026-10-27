@@ -10,6 +10,7 @@ import { visit } from 'unist-util-visit';
 
 import { remarkHeadingId } from './plugins/remark-heading-id';
 import { remarkToc } from './plugins/remark-toc';
+import { remarkTocPlaceholder } from './plugins/remark-toc-placeholder';
 import { remarkCjkTypography } from './plugins/remark-cjk-typography';
 import { remarkImageSize } from './plugins/remark-image-size';
 import { remarkAutoNumber } from './plugins/remark-auto-number';
@@ -77,7 +78,6 @@ type ResolvedOptions = Required<
   >
 > &
   RenderOptions;
-
 /** processor 缓存上限：选项组合的实际取值空间很小，超限只做防御性淘汰 */
 const PROCESSOR_CACHE_MAX = 32;
 const processorCache = new Map<string, any>();
@@ -103,7 +103,18 @@ function processorKey(o: ResolvedOptions): string {
     t.safeZones === false ? 0 : 1,
     o.footnoteLabel ?? '',
     o.footnoteBackLabel ?? '',
+    tocPlaceholderKey(o.tocPlaceholder),
   ].join('|');
+}
+
+/** `[TOC]` 占位符选项 → 稳定的缓存键（选项影响插件行为，必须进 key） */
+function tocPlaceholderKey(v: RenderOptions['tocPlaceholder']): string {
+  if (!v) return '-';
+  return [
+    v.maxDepth ?? 6,
+    v.includeH1 === true ? 1 : 0,
+    v.title ?? '',
+  ].join(',');
 }
 
 /**
@@ -128,6 +139,15 @@ function buildProcessor(opts: ResolvedOptions): any {
 
   if (opts.autoNumber) {
     processor = processor.use(remarkAutoNumber, opts.autoNumber);
+  }
+
+  // 正文内目录占位符 `[TOC]`：
+  // - 必须在 remarkToc 之后（依赖 ctx.toc 收集到的标题）
+  // - 必须在 remarkAutoNumber 之后（目录项要显示与标题相同的编号）
+  if (opts.tocPlaceholder) {
+    processor = processor.use(remarkTocPlaceholder, {
+      options: opts.tocPlaceholder,
+    });
   }
 
   // rehype 阶段

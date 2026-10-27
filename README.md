@@ -35,11 +35,11 @@ pnpm dev             # 启动 Web 开发服务器
 
 ## 已实现能力
 
-- **核心内核**（`@md-studio/core`）：unified 管线（remark-parse/gfm/math/frontmatter → rehype），中文排版（间距自动修正 + 标点/省略号/引号 lint）、标题自动编号、图像大小（`=WxH`）、分页符、字数统计、TOC 旁路输出。
+- **核心内核**（`@md-studio/core`）：unified 管线（remark-parse/gfm/math/frontmatter → rehype），中文排版（间距自动修正 + 标点/省略号/引号 lint）、标题自动编号、图像大小（`=WxH`）、分页符、字数统计、TOC 旁路输出、正文内目录占位符（`[TOC]`）。
 - **渲染性能**：`render()` 按选项缓存 unified processor（旁路 TOC/lint 上下文改为挂在语法树上，保证复用下的并发隔离）、缓存净化 schema、按 `(theme, lang, code)` 缓存 Shiki 高亮子树并提供 `warmupHighlight()` 预热；`data-line` 锚点只注入块级元素（实测同类文档 2,264 → 约 485 个），预览元素树按 `(hast, components)` 记忆化，滚动同步索引改为「脏标记 + 按需重建」。
 - **安全**：默认严格净化，`<script>`/`onerror`/`javascript:` 均被剥离（见 `tests/pipeline.test.ts` 的 XSS 用例）。
 - **护城河 1 中文排版**：在渲染期表现为中英/中数间距修正，原文件不变；lint 仅提示。
-- **Web 应用**：CodeMirror6 编辑器、单 View 多标签、对焦模式、打字机模式、双向滚动同步（二分 + 双锁 + rAF 节流）、主题/宽度切换、标题编号切换、大纲跳转、导出 HTML/PDF、分享卡片、快捷键（逻辑键跨平台）、设置面板、i18n 骨架。
+- **Web 应用**：CodeMirror6 编辑器、单 View 多标签、对焦模式、打字机模式、双向滚动同步（二分 + 双锁 + rAF 节流）、主题/宽度切换、标题编号切换、大纲跳转、正文内目录（`[TOC]`）、导出 HTML/PDF、分享卡片、快捷键（逻辑键跨平台）、设置面板、i18n 骨架。
 - **版本快照**（`@md-studio/core/version`）：`.md-studio/history` 存最近 20 版，附 LCS diff（纯逻辑，依赖注入 FS 适配器）。
 
 ## 偏离与说明

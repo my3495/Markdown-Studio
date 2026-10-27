@@ -37,11 +37,29 @@ export interface TypographyWarning {
 
 /** TOC 项 */
 export interface TocItem {
-  depth: number;
+    depth: number;
   text: string;
   id: string;
   /** 源文件对应行号（用于滚动同步 / 点击跳转） */
   line: number;
+}
+
+/** 正文内目录占位符（`[TOC]`）的渲染选项 */
+export interface TocPlaceholderOptions {
+  /**
+   * 目录层级：只渲染 depth <= maxDepth 的标题。
+   * 默认 6（全部层级）。
+   */
+  maxDepth?: number;
+  /**
+   * 目录区块标题（如「目录」）。为空字符串则不渲染标题行。
+   */
+  title?: string;
+  /**
+   * 是否包含「本文标题」自身（depth 1 的第一个标题）。
+   * 默认 false —— 通常正文首个 h1 即文档名，目录里再列一遍是冗余。
+   */
+  includeH1?: boolean;
 }
 
 /** 行号索引：源行 → 预览 DOM 顶部偏移（由主线程构建，此处仅提供数据线标记） */
@@ -76,6 +94,11 @@ export interface RenderOptions {
   footnoteLabel?: string;
   /** 脚注「返回引用」按钮的无障碍文案 */
   footnoteBackLabel?: string;
+  /**
+   * 正文内目录占位符 `[TOC]`：把该占位符渲染为可点击的目录列表。
+   * 传 `false`（或不传）则保持原样，把 `[TOC]` 当普通文本渲染。
+   */
+  tocPlaceholder?: false | TocPlaceholderOptions;
 }
 
 /** 渲染结果 */

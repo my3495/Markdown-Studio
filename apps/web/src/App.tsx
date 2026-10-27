@@ -460,6 +460,20 @@ export function App() {
     document.documentElement.style.setProperty('--md-split-ratio', String(s.splitRatio));
   }, [s.splitRatio]);
 
+  // 渲染相关设置变更后重渲染已打开文档：
+  // 标题编号 / 正文内目录 / 中文排版 / 高亮主题 都影响 hast 的内容，
+  // 不重渲染的话预览区会一直显示旧结果（改完设置看不到任何变化）。
+  //
+  // 依赖用**原始值**而非对象：s.typography / s.tocPlaceholder 是对象，
+  // 每次 set() 都会换新引用，直接放进依赖会形成「重渲染 → set → 换引用 → 再重渲染」
+  // 的死循环。这里把它们压成字符串再比较。
+  const typographyKey = JSON.stringify(s.typography);
+  const tocKey = JSON.stringify(s.tocPlaceholder);
+  useEffect(() => {
+    docs.rerenderAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.autoNumber, tocKey, typographyKey, s.theme, s.locale]);
+
   // 同步文档到知识库（防抖，供搜索/反链/图谱使用）
   useEffect(() => {
     const timer = window.setTimeout(() => vault.syncFromDocs(), 400);

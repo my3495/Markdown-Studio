@@ -584,6 +584,26 @@ export function Toolbar({ editorView, onSlides, onOpenFolder, folderActive }: Pr
               </select>
             </div>
             <div className="tb-menu-row">
+              <span>{t(locale, 'tocPlaceholder')}</span>
+              <select
+                value={
+                  !s.tocPlaceholder
+                    ? 'none'
+                    : String(s.tocPlaceholder.maxDepth ?? 6)
+                }
+                onChange={(e) => {
+                  const v = e.target.value;
+                  s.setTocPlaceholder(v === 'none' ? false : { maxDepth: Number(v) });
+                }}
+              >
+                <option value="none">{t(locale, 'none')}</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="6">6</option>
+              </select>
+            </div>
+            <div className="tb-menu-row">
               <span>{t(locale, 'theme')}</span>
               <select value={s.theme} onChange={(e) => s.setTheme(e.target.value as any)}>
                 <option value="light">{t(locale, 'light')}</option>

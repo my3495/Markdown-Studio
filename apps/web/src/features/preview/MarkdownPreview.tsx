@@ -101,8 +101,57 @@ function makeAnchor(onOpenWiki?: (name: string) => void) {
         </a>
       );
     }
+    // 正文内目录（[TOC]）的锚点：手动滚动预览容器
+    // 不用浏览器原生片段跳转 —— 预览区是独立滚动容器（.app-preview），
+    // 原生跳转在部分浏览器里会滚动窗口而不是该容器，或因 id 含非 ASCII
+    // 字符而匹配失败。手动滚动同时能触发 ScrollSync，编辑器跟随定位。
+    const href = typeof props.href === 'string' ? props.href : '';
+    if (href.startsWith('#') && href.length > 1) {
+      return (
+        <a
+          {...props}
+          onClick={(e) => {
+            if (!scrollToAnchor(e.currentTarget, href)) return;
+            e.preventDefault();
+          }}
+        >
+          {props.children}
+        </a>
+      );
+    }
     return <a {...props}>{props.children}</a>;
   };
+}
+
+/**
+ * 把预览区滚动到锚点目标。
+ * 返回 true 表示已处理（调用方应 preventDefault）。
+ */
+function scrollToAnchor(link: HTMLElement, href: string): boolean {
+  let id: string;
+  try {
+    id = decodeURIComponent(href.slice(1));
+  } catch {
+    id = href.slice(1);
+  }
+  // 预览容器 = 最近的 .md-preview（其外层 .app-preview 才是真正滚动容器）
+  const mdPreview = link.closest('.md-preview');
+  const scroller = mdPreview?.parentElement ?? mdPreview;
+  if (!mdPreview || !scroller) return false;
+  const target = mdPreview.querySelector<HTMLElement>(`#${cssEscape(id)}`);
+  if (!target) return false;
+  const top =
+    target.getBoundingClientRect().top -
+    scroller.getBoundingClientRect().top +
+    scroller.scrollTop -
+    16;
+  scroller.scrollTop = Math.max(0, top);
+  return true;
+}
+
+function cssEscape(s: string): string {
+  if (typeof CSS !== 'undefined' && CSS.escape) return CSS.escape(s);
+  return s.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
 }
 
 function textOf(node: unknown): string {

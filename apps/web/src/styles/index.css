@@ -1700,6 +1700,61 @@ body.panel-resizing .panel-divider::after {
 .md-preview input[type='checkbox'] {
   accent-color: var(--md-color-accent);
 }
+
+/* ------------------ 正文内目录（[TOC] 占位符） ------------------ */
+.md-preview .md-toc {
+  margin: 1.4em 0;
+  padding: 14px 18px;
+  border: 1px solid var(--md-color-border);
+  border-radius: var(--md-radius);
+  background: var(--md-color-surface);
+}
+.md-preview .md-toc-title {
+  margin: 0 0 0.5em;
+  font-weight: 700;
+  font-size: 0.95em;
+  color: var(--md-color-fg);
+}
+.md-preview .md-toc ul {
+  margin: 0;
+  padding-left: 1.2em;
+  list-style: none;
+}
+.md-preview .md-toc > ul {
+  padding-left: 0;
+}
+.md-preview .md-toc li {
+  margin: 0.15em 0;
+}
+.md-preview .md-toc li > ul {
+  margin-top: 0.15em;
+}
+.md-preview .md-toc a {
+  color: var(--md-color-fg);
+  border-bottom: none;
+  text-decoration: none;
+}
+.md-preview .md-toc a:hover {
+  color: var(--md-color-accent);
+  border-bottom: 1px solid var(--md-color-accent);
+}
+/* 层级标记：让嵌套关系一眼可辨（配合 list-style: none） */
+.md-preview .md-toc li {
+  position: relative;
+}
+.md-preview .md-toc li::before {
+  content: '';
+  position: absolute;
+  left: -0.85em;
+  top: 0.85em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--md-color-border-strong);
+}
+.md-preview .md-toc > ul > li::before {
+  background: var(--md-color-accent);
+}
 .mermaid-block {
   text-align: center;
   margin: 1.2em 0;

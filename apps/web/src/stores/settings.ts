@@ -3,6 +3,7 @@ import {
   sanitizeCustomVars,
   type NumberStyle,
   type RenderOptions,
+  type TocPlaceholderOptions,
   type TypographyOptions,
 } from '@md-studio/core';
 import type { Locale } from '../i18n';
@@ -100,6 +101,11 @@ interface SettingsState {
   width: WidthMode;
   typography: Partial<TypographyOptions>;
   autoNumber: false | NumberStyle;
+  /**
+   * 正文内目录占位符 `[TOC]`：开启后，正文里的 `[TOC]` 会渲染为可点击的目录。
+   * `false` 表示关闭（`[TOC]` 保持为普通文本）。
+   */
+  tocPlaceholder: false | TocPlaceholderOptions;
   focusMode: boolean;
   typewriterMode: boolean;
   locale: Locale;
@@ -127,6 +133,7 @@ interface SettingsState {
   setWidth: (w: WidthMode) => void;
   setTypography: (key: keyof TypographyOptions, value: boolean) => void;
   setAutoNumber: (v: false | NumberStyle) => void;
+  setTocPlaceholder: (v: false | TocPlaceholderOptions) => void;
   toggleFocus: () => void;
   toggleTypewriter: () => void;
   setLocale: (l: Locale) => void;
@@ -158,6 +165,9 @@ export const useSettings = create<SettingsState>((set, get) => ({
   width: persisted.width ?? 'medium',
   typography: { spacing: true, numberSpacing: true, punctuation: true, ellipsis: true, quotes: true, ...persisted.typography },
   autoNumber: persisted.autoNumber ?? false,
+  // 正文内目录默认开启：Typora / Obsidian 用户写 `[TOC]` 时期望看到目录
+  // title 留空 → 由 getRenderOptions 按界面语言填入（目录/Contents/目次）
+  tocPlaceholder: persisted.tocPlaceholder ?? { maxDepth: 3 },
   focusMode: persisted.focusMode ?? false,
   typewriterMode: persisted.typewriterMode ?? false,
   locale: persisted.locale ?? 'zh-CN',
@@ -192,6 +202,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
   setTypography: (key, value) =>
     set((s) => ({ typography: { ...s.typography, [key]: value } })),
   setAutoNumber: (autoNumber) => set({ autoNumber }),
+  setTocPlaceholder: (tocPlaceholder) => set({ tocPlaceholder }),
   toggleFocus: () => set((s) => ({ focusMode: !s.focusMode })),
   toggleTypewriter: () => set((s) => ({ typewriterMode: !s.typewriterMode })),
   setLocale: (locale) => set({ locale }),
@@ -280,6 +291,15 @@ export function getRenderOptions(s: SettingsState): RenderOptions {
     externalLinksNewTab: true,
     typography: s.typography,
     autoNumber: s.autoNumber,
+    // 正文内目录 `[TOC]`：标题文案随界面语言本地化
+    tocPlaceholder: !s.tocPlaceholder
+      ? false
+      : {
+          ...s.tocPlaceholder,
+          title:
+            s.tocPlaceholder.title ??
+            (s.locale === 'en' ? 'Contents' : s.locale === 'ja' ? '目次' : '目录'),
+        },
     highlightTheme: resolvedDark ? 'dark' : 'light',
     // 脚注区标题/返回按钮是 sr-only 文案，随界面语言本地化
     footnoteLabel: s.locale === 'en' ? 'Footnotes' : '脚注',

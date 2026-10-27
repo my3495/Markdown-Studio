@@ -1,5 +1,6 @@
 export { remarkHeadingId } from './remark-heading-id';
 export { remarkToc } from './remark-toc';
+export { remarkTocPlaceholder } from './remark-toc-placeholder';
 export { remarkDataLine } from './remark-data-line';
 export { remarkCjkTypography } from './remark-cjk-typography';
 export { remarkImageSize } from './remark-image-size';

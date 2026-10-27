@@ -31,6 +31,8 @@ interface DocumentState {
   /** 重命名文档：改显示名；知识库笔记传入 newId（新相对路径）时同步迁移 id/order */
   renameDoc: (id: string, name: string, newId?: string) => void;
   updateContent: (id: string, content: string) => Promise<void>;
+  /** 用当前渲染设置重渲染所有已打开文档（设置项变更后调用） */
+  rerenderAll: () => void;
   markSaved: (id: string, path: string) => void;
   setScrollTop: (id: string, top: number) => void;
 }
@@ -190,6 +192,48 @@ export const useDocuments = create<DocumentState>((set, get) => ({
       if (!d) return {};
       return { docs: { ...s.docs, [id]: { ...d, dirty: false, path } } };
     }),
+
+  /**
+   * 用当前渲染设置重渲染所有已打开文档。
+   *
+   * 渲染相关的设置（标题编号、正文内目录、中文排版…）改变后，已渲染的 hast
+   * 必须重新生成，否则预览区仍显示旧结果 —— 用户改完设置看不到任何变化。
+   *
+   * 实现上复用 updateContent：它内部已包含「按文档尾随合并 + 序号丢弃过期结果」
+   * 的并发保护。注意这里**不能**改写 content（否则会把文档标记为 dirty），
+   * 所以直接调用渲染逻辑而不是 updateContent。
+   */
+  rerenderAll: () => {
+    const settings = getRenderOptions(useSettings.getState());
+    for (const d of Object.values(get().docs)) {
+      const seq = (renderSeq.get(d.id) ?? 0) + 1;
+      renderSeq.set(d.id, seq);
+      void (async () => {
+        try {
+          const result = await render(d.content, settings);
+          if (renderSeq.get(d.id) !== seq) return;
+          set((s) => {
+            const cur = s.docs[d.id];
+            if (!cur) return {};
+            return {
+              docs: {
+                ...s.docs,
+                [d.id]: {
+                  ...cur,
+                  hast: result.hast,
+                  toc: result.toc,
+                  words: result.words,
+                  warnings: result.warnings ?? [],
+                },
+              },
+            };
+          });
+        } catch (e) {
+          console.error('[rerender] failed', e);
+        }
+      })();
+    }
+  },
 
   setScrollTop: (id, top) =>
     set((s) => {
