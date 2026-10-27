@@ -1,20 +1,36 @@
-name: CI Bisect B
+name: CI Bisect C
 
 on:
   push:
     branches: [main]
-    tags: ['v*']
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
-  pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
+    paths:
+      - '.github/workflows/bisect.yml'
 
 jobs:
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - run: echo release-step
+
   test:
     runs-on: ubuntu-latest
     steps:
+      - run: echo test-step
+
+  publish-npm:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
       - uses: actions/checkout@v4
-      - run: echo trigger-ok
+      - run: echo publish-step
+        if: ${{ secrets.NPM_TOKEN != '' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
