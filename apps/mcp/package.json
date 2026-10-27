@@ -1,0 +1,34 @@
+{
+  "name": "@md-studio/mcp",
+  "version": "1.0.0",
+  "description": "Markdown Studio MCP 服务器（stdio / HTTP，驱动本地知识库）",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "md-studio-mcp": "./dist/index.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "mcp-config.example.json"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node dist/index.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@md-studio/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "esbuild": "^0.23.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}

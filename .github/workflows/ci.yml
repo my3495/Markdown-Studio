@@ -1,0 +1,198 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+
+# 同一 ref 上后续 push 自动取消旧 build，节省 CI 资源
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  build-web:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @md-studio/web build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist
+          if-no-files-found: error
+
+  build-mcp:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @md-studio/mcp build
+      - run: pnpm --filter @md-studio/mcp test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcp-dist
+          path: |
+            apps/mcp/dist
+            apps/mcp/README.md
+            apps/mcp/mcp-config.example.json
+            apps/mcp/package.json
+          if-no-files-found: error
+
+  build-desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: desktop-windows
+          - os: macos-latest
+            target: universal-apple-darwin
+            artifact: desktop-macos
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            artifact: desktop-linux
+    runs-on: ${{ matrix.os }}
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Install Linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - run: pnpm install --frozen-lockfile
+      # 桌面签名：配置 Secrets 后取消注释 env（见 docs/DESKTOP-SIGNING.md）
+      - name: Tauri build
+        uses: tauri-apps/tauri-action@v0
+        env:
+          # TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CI: true
+        with:
+          projectPath: apps/desktop
+          args: --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle
+            apps/desktop/src-tauri/target/${{ matrix.target }}/release/*.exe
+            apps/desktop/src-tauri/target/${{ matrix.target }}/release/markdown-studio*
+          if-no-files-found: warn
+      - name: Checksums
+        shell: bash
+        run: |
+          mkdir -p checksums
+          find apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle -type f 2>/dev/null \
+            | head -n 50 \
+            | xargs -r sha256sum > checksums/${{ matrix.artifact }}.sha256 || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-checksums
+          path: checksums
+          if-no-files-found: ignore
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-web, build-mcp, build-desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # G1：tag 时发布 MCP 到 npm（需仓库 secrets.NPM_TOKEN；未配置则跳过）
+  publish-npm:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-mcp, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @md-studio/mcp build
+      - name: Publish @md-studio/mcp
+        # secrets.NPM_TOKEN 在 if 执行阶段已经可读，而 env 块内的同名变量
+        # 在 step 评估时为空字符串，会导致原条件永远不触发、发布被静默跳过。
+        if: ${{ secrets.NPM_TOKEN != '' }}
+        working-directory: apps/mcp
+        run: |
+          # workspace 依赖已由 esbuild 打进 dist，以独立包发布
+          npm publish --access public --provenance || npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "markdown-studio": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@md-studio/mcp",
+        "--workspace",
+        "/ABS/PATH/TO/YOUR/VAULT"
+      ]
+    }
+  }
+}

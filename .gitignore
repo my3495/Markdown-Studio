@@ -1,0 +1,42 @@
+node_modules/
+dist/
+dist.bak/
+.target/
+target/
+src-tauri/target/
+**/src-tauri/target/
+**/src-tauri/gen/
+release/
+*.log
+.DS_Store
+.md-studio/
+coverage/
+.vite/
+
+# === 本机开发工具 / 沙箱临时文件 ===
+.test-deps/
+.trae/
+.workbuddy/
+desktop-test/
+_tmp_*
+*.tmp
+
+# === Agent 本地测试产物 ===
+wb-test*.json
+dlg-*.json
+open-via-cdp.json
+rename-test.json
+启动 Markdown Studio.bat
+_dev_out.txt
+未命名-*.md
+
+# === 个人 IDE 配置 ===
+.idea/
+.vscode/
+
+# === 根目录方案文档（避免误提交到仓库） ===
+Markdown-Studio-*.md
+
+_llm_*
+_extract.cjs
+

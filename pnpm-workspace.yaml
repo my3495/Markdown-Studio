@@ -1,0 +1,13 @@
+packages:
+  - 'packages/*'
+  - 'apps/*'
+allowBuilds:
+  core-js: set this to true or false
+  esbuild: set this to true or false
+# pnpm 10+/11 构建脚本白名单（原先的 allowBuilds 占位符未生效，导致含 postinstall 的依赖安装卡住）
+onlyBuiltDependencies:
+  - core-js
+  - esbuild
+# 本机 node_modules 已就绪；跳过脚本运行前的自动安装
+# （本环境 pnpm install 在链接阶段会长时间卡住，见 docs/NEXT-STEPS.md「环境备注」）
+verifyDepsBeforeRun: false

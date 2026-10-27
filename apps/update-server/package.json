@@ -1,0 +1,17 @@
+{
+  "name": "@md-studio/update-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Markdown Studio 更新服务：扫描 release/ 产物，生成 tauri updater 所需的 latest.json 清单",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/server.mjs",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "dev": "node src/server.mjs --port 8788",
+    "manifest": "node src/generate-manifest.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

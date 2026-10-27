@@ -1,0 +1,55 @@
+{
+  "name": "@md-studio/core",
+  "version": "1.0.0",
+  "description": "Markdown Studio 平台无关解析/渲染/排版内核",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./typography": "./src/typography/index.ts",
+    "./export": "./src/export/index.ts",
+    "./version": "./src/version/index.ts",
+    "./links": "./src/links/wikilinks.ts",
+    "./search": "./src/search/fts.ts",
+    "./graph": "./src/graph/graph.ts",
+    "./vault": "./src/vault/vault.ts",
+    "./agent": "./src/agent/tools.ts",
+    "./mcp": "./src/mcp/server.ts",
+    "./mcp/stdio": "./src/mcp/stdio.ts",
+    "./mcp/http": "./src/mcp/http.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@shikijs/transformers": "^1.22.0",
+    "github-slugger": "^2.0.0",
+    "hast-util-from-parse5": "8.0.3",
+    "hast-util-to-html": "^9.0.0",
+    "katex": "^0.16.9",
+    "parse5": "7.1.2",
+    "rehype-katex": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.0",
+    "remark-math": "^6.0.0",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.0.0",
+    "shiki": "^1.22.0",
+    "unified": "^11.0.0",
+    "unist-util-visit": "^5.0.0",
+    "unist-util-visit-parents": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/hast": "^3.0.0",
+    "@types/mdast": "^4.0.0",
+    "@types/unist": "^3.0.0",
+    "vitest": "^1.6.0"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": ["react", "react-dom", "vite/client"],
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@md-studio/core": ["../../packages/core/src/index.ts"],
+      "@md-studio/web": ["../web/src/index.ts"],
+      "@md-studio/web/*": ["../web/src/*"]
+    }
+  },
+  "include": ["src"]
+}

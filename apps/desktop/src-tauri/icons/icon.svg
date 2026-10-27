@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Markdown Studio">
+  <title>Markdown Studio</title>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#C4682F" />
+      <stop offset="0.55" stop-color="#B05822" />
+      <stop offset="1" stop-color="#A04616" />
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.16" />
+      <stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0.03" />
+      <stop offset="1" stop-color="#000000" stop-opacity="0.10" />
+    </linearGradient>
+  </defs>
+
+  <!-- 底色：赤陶（取自应用强调色 #a9501d），圆角为画布 20% -->
+  <rect x="72" y="72" width="880" height="880" rx="208" fill="url(#tile)" />
+  <rect x="72" y="72" width="880" height="880" rx="208" fill="url(#sheen)" />
+  <rect x="72" y="72" width="880" height="880" rx="208" fill="none" stroke="#FFFFFF" stroke-opacity="0.14" stroke-width="6" />
+
+  <!-- 记号：奶油色 M↓（Markdown 标志） -->
+  <g transform="translate(18 -8) translate(512 512) scale(1.06) translate(-512 -512)">
+    <path d="M220 664 V344 L376 540 L528 344 V664" fill="none" stroke="#F7F5F1"
+          stroke-width="78" stroke-linecap="round" stroke-linejoin="round" />
+    <rect x="662" y="336" width="76" height="300" rx="38" fill="#F7F5F1" />
+    <path d="M614 570 H786 L700 720 Z" fill="#F7F5F1" stroke="#F7F5F1"
+          stroke-width="30" stroke-linejoin="round" />
+  </g>
+</svg>
