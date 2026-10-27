@@ -187,11 +187,16 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @md-studio/mcp build
       - name: Publish @md-studio/mcp
-        # secrets.NPM_TOKEN 在 if 执行阶段已经可读，而 env 块内的同名变量
-        # 在 step 评估时为空字符串，会导致原条件永远不触发、发布被静默跳过。
-        if: ${{ secrets.NPM_TOKEN != '' }}
+        # 这里不能用 `if: ${{ secrets.NPM_TOKEN != '' }}`：
+        # step 级 if 里引用 secrets 会让 GitHub 在解析工作流阶段就拒绝整个文件
+        # （表现为 run 立刻 failure 且一个 job 都不创建）。
+        # 改为在脚本里判断环境变量：NPM_TOKEN 未配置就优雅跳过。
         working-directory: apps/mcp
         run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::notice::未配置 secrets.NPM_TOKEN，跳过 npm 发布"
+            exit 0
+          fi
           # workspace 依赖已由 esbuild 打进 dist，以独立包发布
           npm publish --access public --provenance || npm publish --access public
         env:
