@@ -34,6 +34,7 @@ import { warmupRender } from './platform/render-offthread';
 import { runMatchedRecipes } from './platform/recipes/runner';
 import { startCronRecipes } from './platform/recipes/cron';
 import { parseShareHash } from './platform/share/store';
+import { exportShareCard } from './features/export/exporter';
 import { ShareView } from './features/share/ShareView';
 import { Icon } from './components/Icon';
 import { ToastHost } from './features/toast/ToastHost';
@@ -46,6 +47,15 @@ const WIDTH_PX: Record<string, string> = {
   wide: '920px',
   full: '1100px',
 };
+
+/** Ctrl+Shift+W 的循环顺序（与设置面板里的宽度档位一致） */
+const WIDTH_ORDER = ['narrow', 'medium', 'wide', 'full'] as const;
+const WIDTH_LABEL_KEY = {
+  narrow: 'widthNarrow',
+  medium: 'widthMedium',
+  wide: 'widthWide',
+  full: 'widthFull',
+} as const;
 
 export function App() {
   const s = useSettings();
@@ -597,6 +607,25 @@ export function App() {
         else docs.newDoc();
       },
       closeTab: () => activeId && docs.closeDoc(activeId),
+      // Ctrl+Shift+W：在四档书写宽度间循环（与设置面板的宽度选项同源）
+      width: () => {
+        const st = useSettings.getState();
+        const next = WIDTH_ORDER[(WIDTH_ORDER.indexOf(st.width) + 1) % WIDTH_ORDER.length]!;
+        st.setWidth(next);
+        toast(`${t(st.locale, 'width')} · ${t(st.locale, WIDTH_LABEL_KEY[next])}`);
+      },
+      // Ctrl+Shift+C：选区（无选区则取开头一小段）生成分享卡片 PNG
+      shareCard: () => {
+        const st = useDocuments.getState();
+        const doc = st.activeId ? st.docs[st.activeId] : null;
+        if (!doc) return;
+        const view = editorViewRef.current;
+        const sel = view
+          ? view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to)
+          : '';
+        // 与工具栏「分享卡片」同一条路径与同一兜底策略
+        void exportShareCard(sel || doc.content.slice(0, 200), doc.name);
+      },
     }),
     [active, activeId, docs, s, vault, togglePalette, saveActive]
   );

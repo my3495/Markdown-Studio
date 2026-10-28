@@ -19,6 +19,13 @@ export function warningsToDiagnostics(
     // 两者常不相等（如 `...` 建议为 `……`），会把波浪线画长或画短。
     const span = Math.max(1, w.length ?? ((w.suggestion || '').length || 1));
     let to = Math.min(from + span, line.to);
+    // 兜底：列号已贴到行尾（from === line.to）时 to 会等于 from，
+    // 得到零长度诊断 —— CodeMirror 不会渲染这种波浪线。此时把区间左移一格，
+    // 让波浪线仍落在本行最后一个字符上，而不是溢出到下一行。
+    if (to <= from && line.to > line.from) {
+      from = Math.max(line.from, line.to - 1);
+      to = line.to;
+    }
     if (to <= from) to = Math.min(from + 1, doc.length);
     out.push({
       from,
