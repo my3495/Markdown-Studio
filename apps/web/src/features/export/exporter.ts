@@ -34,7 +34,8 @@ export function downloadHtml(md: string, meta: ExportMeta = {}) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${meta.title ?? 'export'}.html`;
+      // 文档名通常带 .md，直接拼会得到 `note.md.html`；先剥掉源扩展名
+      a.download = `${(meta.title ?? 'export').replace(/\.(md|markdown|txt)$/i, '') || 'export'}.html`;
       a.click();
       URL.revokeObjectURL(url);
     })
@@ -54,7 +55,10 @@ export function downloadShareHtml(md: string, meta: ExportMeta = {}) {
     .then((html) => {
       const banner =
         '<div style="position:sticky;top:0;z-index:9;padding:8px 16px;background:#0f172a;color:#e2e8f0;font:13px/1.4 system-ui,sans-serif;">只读分享 · Read-only share</div>';
-      const out = html.replace(/<body([^>]*)>/i, `<body$1>${banner}`);
+      // 必须锚定在 </head> 之后再找 <body>：导出 CSS 的注释里就写着 `<body>`
+      // （用于说明 body 外边距），只按 `<body` 匹配会把横幅插进样式注释里，
+      // 结果横幅不可见、CSS 还被提前截断。
+      const out = html.replace(/(<\/head>[\s\S]*?<body[^>]*>)/i, `$1${banner}`);
       const blob = new Blob([out], { type: 'text/html;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

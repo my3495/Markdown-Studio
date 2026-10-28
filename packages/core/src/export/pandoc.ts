@@ -141,9 +141,26 @@ function convertInline(s: string): string {
   return t.replace(/\u0000(\d+)\u0000/g, (_, i: string) => slots[Number(i)]!);
 }
 
+/**
+ * LaTeX 特殊字符转义。
+ *
+ * 必须**单遍**替换：分多步做时，先插入的 `\textbackslash{}` 会被后续的
+ * 「给 `{}` 加反斜杠」规则二次转义成 `\textbackslash\{\}`，产物直接编译失败。
+ * 同理 `^` 在 LaTeX 里是上标，漏转义会让正文里的 `^` 吞掉后一个字符。
+ */
+const LATEX_ESCAPES: Record<string, string> = {
+  '\\': '\\textbackslash{}',
+  '{': '\\{',
+  '}': '\\}',
+  '&': '\\&',
+  '%': '\\%',
+  $: '\\$',
+  '#': '\\#',
+  _: '\\_',
+  '~': '\\textasciitilde{}',
+  '^': '\\textasciicircum{}',
+};
+
 function escapeLatex(s: string): string {
-  return s
-    .replace(/\\/g, '\\textbackslash{}')
-    .replace(/([&%$#_{}])/g, '\\$1')
-    .replace(/~/g, '\\textasciitilde{}');
+  return s.replace(/[\\{}&%$#_~^]/g, (c) => LATEX_ESCAPES[c]!);
 }
