@@ -9,7 +9,10 @@
 
 :root {
   color-scheme: light;
+  /* 以下三项由 core 主题注入覆盖；此处是 JS 注入前的首屏兜底，值与 THEME_VARIABLES 保持一致。 */
   --md-font-mono: 'SFMono-Regular', 'JetBrains Mono', Consolas, 'Liberation Mono', monospace;
+  --md-reading-font-size: 1.08rem;
+  --md-reading-line-height: 1.8;
 
   /* 语义派生令牌：全部由 --md-color-accent / --md-color-fg 经 color-mix 派生，
      因此切换明暗主题或用户自定义强调色时会自动跟随，无需逐主题硬编码。 */
@@ -1495,9 +1498,15 @@ body.panel-resizing .panel-divider::after {
 .cm-editor .cm-content ::selection {
   background: color-mix(in srgb, var(--md-color-accent) 28%, transparent) !important;
 }
-.cm-dim {
-  opacity: 0.35;
-  transition: opacity 0.15s ease;
+/* 对焦模式：只淡化**文字**颜色，不用 opacity。
+ * opacity 作用于整行容器，会把该行的语法着色、选区背景、lint 波浪线
+ * 一并压到 35%，几类高亮在对焦模式下互相覆盖失真（修复 G3）。
+ * 这里连带子元素一起改 color，但保持 background / text-decoration 不变，
+ * 因此选区背景、搜索命中、波浪线仍按原强度显示。 */
+.cm-dim,
+.cm-dim * {
+  color: color-mix(in srgb, var(--md-color-fg) 32%, transparent) !important;
+  transition: color 0.15s ease;
 }
 
 /* ------------------ 预览区排版 ------------------ */
@@ -1560,15 +1569,26 @@ body.panel-resizing .panel-divider::after {
 .md-preview h1 {
   font-size: 1.9em;
   padding-bottom: 0.3em;
-  border-bottom: 1px solid var(--md-hairline);
+  border-bottom: 1px solid var(--md-color-border);
 }
 .md-preview h2 {
   font-size: 1.5em;
   padding-bottom: 0.3em;
-  border-bottom: 1px solid var(--md-hairline);
+  border-bottom: 1px solid var(--md-color-border);
 }
 .md-preview h3 {
   font-size: 1.25em;
+}
+/* h4~h6：Preflight 会把标题字号重置为继承，必须显式给出，否则预览层级与导出不一致 */
+.md-preview h4 {
+  font-size: 1.1em;
+}
+.md-preview h5 {
+  font-size: 1em;
+}
+.md-preview h6 {
+  font-size: 0.95em;
+  color: var(--md-color-muted);
 }
 .md-preview .md-heading-edit {
   outline: none;
@@ -1610,7 +1630,26 @@ body.panel-resizing .panel-divider::after {
 }
 .md-preview strong {
   font-weight: 700;
+  color: var(--md-color-fg);
   color: color-mix(in srgb, var(--md-color-fg) 88%, var(--md-color-accent));
+}
+.md-preview em {
+  font-style: italic;
+}
+.md-preview mark {
+  background: color-mix(in srgb, var(--md-color-accent) 22%, transparent);
+  color: inherit;
+  padding: 0 0.15em;
+  border-radius: 3px;
+}
+.md-preview kbd {
+  font-family: var(--md-font-mono);
+  font-size: 0.85em;
+  padding: 0.15em 0.4em;
+  border-radius: 5px;
+  border: 1px solid var(--md-color-border);
+  border-bottom-width: 2px;
+  background: var(--md-color-surface-2);
 }
 .md-preview code {
   font-family: var(--md-font-mono);
@@ -1638,10 +1677,17 @@ body.panel-resizing .panel-divider::after {
   border: none;
   font-size: 0.9em;
 }
+/* Shiki 会把主题色写成 <pre style="background-color:…">，内联优先级高于类选择器，
+ * 导致代码块底色脱离 --md-code-bg（与行内 code 出现两种底色）。此处定向压回令牌色。
+ * 与 packages/core/src/renderer/styles.ts 的同名规则成对存在，勿单边修改。 */
+.md-preview pre.shiki {
+  background: var(--md-code-bg) !important;
+}
 .md-preview blockquote {
   margin: 1.1em 0;
   padding: 10px 16px;
-  color: var(--md-color-muted);
+  /* 着底文字用专用的 muted-quote（AA 5.42:1）；全局 muted 在 surface 上仅 4.17:1 */
+  color: var(--md-color-muted-quote, var(--md-color-muted));
   background: var(--md-color-surface);
   border-left: 4px solid var(--md-color-accent);
   border-radius: 0 var(--md-radius-sm) var(--md-radius-sm) 0;
@@ -1684,6 +1730,42 @@ body.panel-resizing .panel-divider::after {
 .md-preview ol {
   padding-left: 1.5em;
 }
+/* 恢复列表标记：`@tailwind base` 的 Preflight 会把 ul/ol 重置为 list-style: none，
+ * 上面只补了 padding-left，于是预览里「有缩进、无符号」——Markdown 列表退化成
+ * 一串缩进段落。这里在 .md-preview 作用域内恢复标准标记层级（不动全局）。
+ * marker 使用 currentColor，自动跟随明暗主题。 */
+.md-preview ul {
+  list-style: disc outside;
+}
+.md-preview ul ul {
+  list-style: circle outside;
+}
+.md-preview ul ul ul {
+  list-style: square outside;
+}
+.md-preview ol {
+  list-style: decimal outside;
+}
+.md-preview ol ol {
+  list-style: lower-alpha outside;
+}
+.md-preview ol ol ol {
+  list-style: lower-roman outside;
+}
+/* 混合嵌套（ol>ul、ul>ol）无需额外规则：ul / ol 各自的基础规则已覆盖首层，
+ * 而 `ul ul`、`ol ol` 只按同类祖先计层级，混合时仍能正确递进。
+ * 刻意不写 `.md-preview ol ul`——它与 `.md-preview ul ul` 特异性相同且位置靠后，
+ * 会把「ol > ul > ul」的孙级标记从 circle 强行拉回 disc。 */
+/* 任务列表与正文目录由自有标记承担（checkbox / ::before），不能再显示项目符号。
+ * 特异性需压过上面的 `.md-preview ul ul` 等嵌套规则，故显式写满层级并置于其后。 */
+.md-preview ul.contains-task-list,
+.md-preview ul ul.contains-task-list,
+.md-preview ul ul ul.contains-task-list,
+.md-preview .md-toc ul,
+.md-preview .md-toc ul ul,
+.md-preview .md-toc ul ul ul {
+  list-style: none;
+}
 .md-preview li {
   margin: 0.3em 0;
 }
@@ -1692,7 +1774,9 @@ body.panel-resizing .panel-divider::after {
   border-top: 1px solid var(--md-color-border);
   margin: 2em 0;
 }
-.md-preview hr.pagebreak {
+/* 分页符：DOM 实际是 <div class="pagebreak" data-pagebreak="true">（见 remark-pagebreak）。
+ * 旧选择器写成 hr.pagebreak，与实际节点不符，导致分页符高度为 0、完全不可见。 */
+.md-preview .pagebreak {
   border: none;
   border-top: 2px dashed var(--md-color-border-strong);
   margin: 2em 0;
@@ -1755,6 +1839,25 @@ body.panel-resizing .panel-divider::after {
 .md-preview .md-toc > ul > li::before {
   background: var(--md-color-accent);
 }
+/* 脚注区：与导出基线同款分隔线 + 降级排版 */
+.md-preview .footnotes {
+  margin-top: 2.4em;
+  padding-top: 1em;
+  border-top: 1px solid var(--md-color-border);
+  font-size: 0.88em;
+  color: var(--md-color-muted);
+}
+.md-preview details {
+  margin: 1em 0;
+  padding: 8px 12px;
+  border: 1px solid var(--md-color-border);
+  border-radius: var(--md-radius-sm);
+  background: var(--md-color-surface);
+}
+.md-preview summary {
+  cursor: pointer;
+  font-weight: 600;
+}
 .mermaid-block {
   text-align: center;
   margin: 1.2em 0;
@@ -1770,6 +1873,72 @@ body.panel-resizing .panel-divider::after {
   color: var(--md-color-muted);
   font-size: 0.85em;
   text-align: center;
+}
+
+/* ------------------ 打印 / 导出 PDF ------------------ */
+/* 与 packages/core/src/renderer/styles.ts 的 @media print 保持同一语义：
+ * 分页符真正分页、末页分页符不产生空白页、去掉阴影与悬停底色。 */
+@media print {
+  /* App 外壳是 100vh + 内部滚动，打印时会把正文裁成第一屏，这里全部放开 */
+  html,
+  body,
+  #root {
+    height: auto;
+    overflow: visible;
+  }
+  .app-shell {
+    height: auto;
+    overflow: visible;
+  }
+  .app-body,
+  .app-main,
+  .app-work,
+  .app-preview {
+    display: block !important;
+    min-height: 0;
+    overflow: visible;
+  }
+  /* 交互 chrome 一律不打印 */
+  .toolbar,
+  .tabs,
+  .statusbar,
+  .app-side,
+  .app-rail,
+  .side-overlay,
+  .panel-divider,
+  .pane-divider,
+  .panel-edge-btn,
+  .sel-bubble,
+  .toast-host,
+  .cmd-backdrop {
+    display: none !important;
+  }
+  .app-editor {
+    display: none !important;
+  }
+  .md-preview {
+    max-width: none;
+    padding: 0;
+    animation: none;
+  }
+  .md-preview pre,
+  .md-preview img {
+    box-shadow: none;
+  }
+  .md-preview tbody tr:hover {
+    background: transparent;
+  }
+  .md-preview .pagebreak {
+    page-break-after: always;
+    break-after: page;
+    border: 0;
+    margin: 0;
+    height: 0;
+  }
+  .md-preview .pagebreak:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
 }
 
 /* ------------------ 选区格式气泡 ------------------ */
@@ -2220,18 +2389,20 @@ button.sb-item:disabled:hover {
 /* 更新分区：新版本卡片 + 更新说明 */
 .update-available {
   padding: 12px;
-  border: 1px solid var(--md-color-border, var(--border, #e3e0dc));
-  border-radius: var(--md-radius-sm, 6px);
-  background: var(--md-color-bg-soft, rgba(180, 84, 47, 0.05));
+  border: 1px solid var(--md-color-border);
+  border-radius: var(--md-radius-sm);
+  /* 原引用 --md-color-bg-soft（未定义，恒落到兜底值），改用 accent 派生以跟随主题 */
+  background: color-mix(in srgb, var(--md-color-accent) 6%, var(--md-color-bg));
 }
 .update-notes {
   max-height: 220px;
   overflow: auto;
   margin: 8px 0;
   padding: 8px 10px;
-  border-radius: var(--md-radius-sm, 6px);
-  background: var(--md-color-bg, rgba(0, 0, 0, 0.04));
-  font-family: var(--md-font-mono, ui-monospace, monospace);
+  border-radius: var(--md-radius-sm);
+  /* 卡片内再嵌一层，用 surface-2（原 --md-color-bg 在暗色下与外层卡片同色，看不出层次） */
+  background: var(--md-color-surface-2);
+  font-family: var(--md-font-mono);
   font-size: 12px;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -2625,7 +2796,8 @@ button.sb-item:disabled:hover {
   color: var(--md-color-danger, #c0392b);
 }
 .lp-session-menu button.danger:hover {
-  background: var(--md-color-danger-soft, rgba(192, 57, 43, 0.1));
+  /* 由 danger 派生，避免维护一个不存在的 --md-color-danger-soft 令牌 */
+  background: color-mix(in srgb, var(--md-color-danger) 12%, transparent);
 }
 .lp-session-menu-sep {
   height: 1px;
@@ -2906,7 +3078,7 @@ button.sb-item:disabled:hover {
   color: var(--md-color-fg);
   background: var(--md-color-bg);
   border: 1px solid var(--md-color-border);
-  border-radius: var(--md-radius-md);
+  border-radius: var(--md-radius);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
@@ -3042,7 +3214,7 @@ details.agent-trace > summary {
   padding: 4px;
   background: var(--md-color-surface);
   border: 1px solid var(--md-color-border);
-  border-radius: var(--md-radius-md);
+  border-radius: var(--md-radius);
   box-shadow: var(--md-shadow-lg);
   animation: agent-menu-in 0.12s ease;
 }
@@ -3204,11 +3376,12 @@ details.agent-trace > summary {
   flex: 1;
   min-width: 100%;
 }
+/* 阅读态排版走令牌，不硬编码字号/行高（令牌随主题一起下发，导出侧可复用） */
 .app-shell.reading-mode .md-preview {
   max-width: var(--md-max-width, 780px);
   margin: 0 auto;
-  font-size: 1.08rem;
-  line-height: 1.75;
+  font-size: var(--md-reading-font-size, 1.08rem);
+  line-height: var(--md-reading-line-height, 1.8);
 }
 
 /* Focus / Reading：收起侧栏与冗余 chrome */
@@ -3507,6 +3680,15 @@ details.agent-trace > summary {
 }
 .diff-del {
   background: color-mix(in srgb, var(--md-color-danger) 18%, transparent);
+}
+/* 差异被截断时的提示条 */
+.history-diff-note {
+  margin: 6px 0;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--md-color-muted);
+  background: var(--md-color-surface);
+  border-radius: 4px;
 }
 .history-actions {
   margin-bottom: 8px;

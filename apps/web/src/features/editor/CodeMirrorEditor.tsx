@@ -9,11 +9,14 @@ import {
 } from '@codemirror/view';
 import { EditorState, Compartment, Prec } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { syntaxHighlighting, defaultHighlightStyle, syntaxTree } from '@codemirror/language';
+import { syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
+import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import type { EditorView as EV } from '@codemirror/view';
 import { vim } from '@replit/codemirror-vim';
 import { focusMode } from './extensions/focus-mode';
+import { lightSyntax, darkSyntax } from './extensions/syntax';
+import { codeLanguages } from './extensions/code-languages';
 import { typewriterMode } from './extensions/typewriter-mode';
 import { typographyLinter } from './extensions/typography-lint';
 import { spellLinter } from './extensions/spell-lint';
@@ -44,6 +47,15 @@ const editorThemeSpec = {
   },
   '.cm-selectionMatch': {
     backgroundColor: 'color-mix(in srgb, var(--md-color-accent) 16%, transparent)',
+  },
+  /* 查找命中（@codemirror/search）；selected 为「当前焦点命中项」，需更强区分度 */
+  '.cm-searchMatch': {
+    backgroundColor: 'color-mix(in srgb, var(--md-color-accent) 22%, transparent)',
+    outline: '1px solid color-mix(in srgb, var(--md-color-accent) 45%, transparent)',
+  },
+  '.cm-searchMatch-selected': {
+    backgroundColor: 'color-mix(in srgb, var(--md-color-accent) 42%, transparent)',
+    outline: '1px solid color-mix(in srgb, var(--md-color-accent) 70%, transparent)',
   },
   '.cm-gutters': {
     backgroundColor: 'var(--md-color-bg)',
@@ -152,6 +164,7 @@ export function CodeMirrorEditor({ docId, content, onChange, editorRef, onReady 
   /** 尚未同步到 store 的本地输入定时器；存在时 store 内容必然落后于视图 */
   const pendingEmitRef = useRef<number | null>(null);
   const themeComp = useRef(new Compartment());
+  const syntaxComp = useRef(new Compartment());
   const focusComp = useRef(new Compartment());
   const typeComp = useRef(new Compartment());
   const vimComp = useRef(new Compartment());
@@ -164,11 +177,16 @@ export function CodeMirrorEditor({ docId, content, onChange, editorRef, onReady 
     drawSelection(),
     history(),
     EditorView.lineWrapping,
-    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-    markdown({ base: markdownLanguage }),
+    syntaxComp.current.of(
+      syntaxHighlighting(o.resolvedDark ? darkSyntax : lightSyntax, { fallback: true })
+    ),
+    markdown({ base: markdownLanguage, codeLanguages }),
+    /* 查找：面板 + 命中高亮 + 选中同词高亮（修复 C1 / D2） */
+    search(),
+    highlightSelectionMatches(),
     /* 空列表项按 Enter 优先直接退出列表（高于 markdown 内置的续行键位） */
     Prec.highest(keymap.of([{ key: 'Enter', run: exitEmptyListItem }])),
-    keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+    keymap.of([...searchKeymap, ...defaultKeymap, ...historyKeymap, indentWithTab]),
     themeComp.current.of(o.resolvedDark ? darkTheme : lightTheme),
     focusComp.current.of(focusMode(() => optsRef.current.focusMode)),
     typeComp.current.of(typewriterMode(() => optsRef.current.typewriterMode)),
@@ -269,6 +287,11 @@ export function CodeMirrorEditor({ docId, content, onChange, editorRef, onReady 
     view.dispatch({
       effects: [
         themeComp.current.reconfigure(resolvedDark ? darkTheme : lightTheme),
+        syntaxComp.current.reconfigure(
+          syntaxHighlighting(resolvedDark === 'dark' ? darkSyntax : lightSyntax, {
+            fallback: true,
+          })
+        ),
         focusComp.current.reconfigure(focusMode(() => optsRef.current.focusMode)),
         typeComp.current.reconfigure(
           typewriterMode(() => optsRef.current.typewriterMode)

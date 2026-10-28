@@ -15,7 +15,10 @@ export function warningsToDiagnostics(
     let from = line.from + col - 1;
     if (from > line.to) from = line.to;
     if (from < line.from) from = line.from;
-    let to = Math.min(from + Math.max(1, (w.suggestion || '').length || 1), line.to);
+    // 高亮长度取「问题原文」长度（修复 H1）：此前用 suggestion 的长度顶替，
+    // 两者常不相等（如 `...` 建议为 `……`），会把波浪线画长或画短。
+    const span = Math.max(1, w.length ?? ((w.suggestion || '').length || 1));
+    let to = Math.min(from + span, line.to);
     if (to <= from) to = Math.min(from + 1, doc.length);
     out.push({
       from,

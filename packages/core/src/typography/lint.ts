@@ -21,7 +21,7 @@ export function lintTypography(input: LintInput, flags: LintFlags): TypographyWa
   const warnings: TypographyWarning[] = [];
   const push = (
     type: TypographyWarning['type'],
-    issues: { index: number; message: string; suggestion: string }[]
+    issues: { index: number; message: string; suggestion: string; length?: number }[]
   ) => {
     for (const i of issues) {
       warnings.push({
@@ -30,6 +30,7 @@ export function lintTypography(input: LintInput, flags: LintFlags): TypographyWa
         column: column + i.index,
         message: i.message,
         suggestion: i.suggestion,
+        length: i.length,
       });
     }
   };

@@ -7,6 +7,12 @@ export interface OffsetIssue {
   index: number;
   message: string;
   suggestion: string;
+  /**
+   * 问题原文的长度（用于把波浪线画在正确的字符上）。
+   * 上层此前用 suggestion 的长度顶替，那在语义上是错的
+   * （建议文本与问题文本长度往往不同，如 `...` 建议为 `……`）。
+   */
+  length?: number;
 }
 
 const HALF_TO_FULL: Record<string, string> = {
@@ -29,6 +35,7 @@ export function lintPunctuation(text: string): OffsetIssue[] {
       index: m.index + 1,
       message: `中文标点应为全角：${m[1]}${m[2]}`,
       suggestion,
+      length: 1,
     });
   }
   return issues;
@@ -44,6 +51,7 @@ export function lintEllipsis(text: string): OffsetIssue[] {
       index: m.index + 1,
       message: `省略号应使用全角……而非 ${m[0]}`,
       suggestion: '……',
+      length: m[0].length,
     });
   }
   return issues;
@@ -59,6 +67,8 @@ export function lintQuotes(text: string): OffsetIssue[] {
       index: m.index + 1,
       message: `中文引号应使用全角：“${m[1]}”`,
       suggestion: `“${m[1]}”`,
+      // index 指向左引号之后的字符，故覆盖到右引号为止需减 1
+      length: m[0].length - 1,
     });
   }
   return issues;

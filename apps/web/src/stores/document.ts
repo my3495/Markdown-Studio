@@ -1,9 +1,10 @@
 import { create } from 'zustand';
-import { render } from '@md-studio/core';
 import type { Root } from 'hast';
 import type { TocItem, TypographyWarning } from '@md-studio/core';
 import { useSettings, getRenderOptions } from './settings';
 import { t } from '../i18n';
+// 渲染走 Worker（ADR-01），无 Worker 环境下自动回退主线程；见 platform/render-offthread.ts
+import { renderMarkdown } from '../platform/render-offthread';
 
 export interface Doc {
   id: string;
@@ -42,7 +43,16 @@ function genId(): string {
   return `doc-${Date.now()}-${counter++}`;
 }
 
-/** 连续输入时解析/渲染的尾随合并窗口（ms）；首帧不延迟 */
+/**
+ * 连续输入时解析/渲染的尾随合并窗口（ms）；首帧不延迟。
+ *
+ * 这个值反直觉：**调小并不会更快**。渲染移到 Worker 后试过 40ms，
+ * 实测追平反而从 ~340ms 变成 ~386ms（三次采样 386/348/405）。
+ * 原因是窗口短于击键间隔时，Worker 总在渲染「刚刚过期」的那一版，
+ * 最后一次按键要等「当前渲染 + 最新渲染」两次；140ms 恰好让 Worker
+ * 在最后一次按键前空闲下来，只需一次渲染（单次 render 约 200ms，是这里的主导项）。
+ * 所以此值属于「抖动吸收窗口」，不要为追求响应速度继续下调。
+ */
 const RENDER_COALESCE_MS = 140;
 /** 每个文档：待执行的合并定时器与最新渲染序号（序号用于丢弃过期结果） */
 const renderTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -163,7 +173,7 @@ export const useDocuments = create<DocumentState>((set, get) => ({
 
     const settings = getRenderOptions(useSettings.getState());
     try {
-      const result = await render(content, settings);
+      const result = await renderMarkdown(content, settings);
       if (renderSeq.get(id) !== seq) return;
       set((s) => {
         const d = s.docs[id];
@@ -210,7 +220,7 @@ export const useDocuments = create<DocumentState>((set, get) => ({
       renderSeq.set(d.id, seq);
       void (async () => {
         try {
-          const result = await render(d.content, settings);
+          const result = await renderMarkdown(d.content, settings);
           if (renderSeq.get(d.id) !== seq) return;
           set((s) => {
             const cur = s.docs[d.id];

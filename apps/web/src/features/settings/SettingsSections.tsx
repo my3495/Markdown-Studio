@@ -139,6 +139,14 @@ export function EditorSection() {
         />
         <span>{t(locale, 'spellCheck')}</span>
       </label>
+      <label className="ui-check">
+        <input
+          type="checkbox"
+          checked={s.codeHighlight}
+          onChange={(e) => s.setCodeHighlight(e.target.checked)}
+        />
+        <span>{t(locale, 'codeHighlight')}</span>
+      </label>
       <p className="vault-empty" style={{ margin: '8px 0' }}>
         {t(locale, 'spellDictHint')} ({loadPersonalDict().length})
       </p>

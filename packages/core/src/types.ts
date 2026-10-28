@@ -33,6 +33,8 @@ export interface TypographyWarning {
   column: number;
   message: string;
   suggestion: string;
+  /** 问题原文长度（用于编辑器波浪线定位）；缺省时上层退化为按建议文本长度估算 */
+  length?: number;
 }
 
 /** TOC 项 */
@@ -90,6 +92,11 @@ export interface RenderOptions {
   externalLinksNewTab?: boolean;
   /** 将 [[wikilink]] 渲染为可点击双链（知识库） */
   wikilinks?: boolean;
+  /**
+   * `==文字==` 渲染为 `<mark>` 高亮（Typora / Obsidian 风格）。
+   * 传 `false` 则把 `==文字==` 当普通文本，不做任何转换。
+   */
+  equalsHighlight?: boolean;
   /** 脚注区标题（无障碍朗读用，随界面语言本地化） */
   footnoteLabel?: string;
   /** 脚注「返回引用」按钮的无障碍文案 */

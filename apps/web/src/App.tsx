@@ -29,8 +29,8 @@ import {
   replaceHeadingAtLine,
   replaceTldrawFence,
   saveNote,
-  warmupHighlight,
 } from '@md-studio/core';
+import { warmupRender } from './platform/render-offthread';
 import { runMatchedRecipes } from './platform/recipes/runner';
 import { startCronRecipes } from './platform/recipes/cron';
 import { parseShareHash } from './platform/share/store';
@@ -430,6 +430,8 @@ export function App() {
 
   // 空闲期预热 Shiki：主题与常用语法的按需加载是一次性冷启动成本（实测首开文档
   // 约有 500ms 落在这一步），放到启动后的空闲帧做掉，就不占用「打开即见」的关键路径。
+  // 渲染已移到 Worker（ADR-01），所以预热也必须投递到 Worker，否则预热的是主线程里
+  // 那份用不到的实例，Worker 里仍要再冷启动一次。
   // 失败静默：正式渲染时仍会按需加载并走原有降级日志。
   useEffect(() => {
     const idle = (
@@ -438,7 +440,7 @@ export function App() {
       }
     ).requestIdleCallback;
     const run = () => {
-      void warmupHighlight(resolveTheme(s.theme) === 'dark' ? 'dark' : 'light');
+      warmupRender(resolveTheme(s.theme) === 'dark' ? 'dark' : 'light');
     };
     if (typeof idle === 'function') idle(run, { timeout: 3000 });
     else window.setTimeout(run, 1000);

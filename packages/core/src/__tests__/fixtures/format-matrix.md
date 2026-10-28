@@ -73,6 +73,8 @@ $$
 
 内联片段：按 <kbd>Ctrl</kbd> + <kbd>S</kbd> 保存。
 
+等号高亮：==这类文字== 会被渲染成 mark。
+
 <div class="html-danger" onclick="window.__xss2 = 1">带事件属性的块</div>
 
 <script>window.__xss = 1</script>

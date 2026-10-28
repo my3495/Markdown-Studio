@@ -1,7 +1,7 @@
 # Markdown Studio — 下一步工作计划（NEXT-STEPS）
 
 > 关联文档：《Markdown-Studio-项目开发详细方案-V1.0-Final.md》（总体方案）、`README.md`（当前实现总览）。
-> 本文档记录在既有实现基础上的**剩余增强任务**、优先级、工作量与建议推进顺序。更新日期：2026-10-16。
+> 本文档记录在既有实现基础上的**剩余增强任务**、优先级、工作量与建议推进顺序。更新日期：2026-10-28。
 
 ---
 
@@ -126,10 +126,44 @@
   - **预览渲染**：`MarkdownView` 的 React 元素树按 `(safeHast, components)` 记忆化，父级频繁重渲染时整棵子树 bailout；`normalizeStyles` 无变更时不再为整棵树分配新数组；`fenceIndexMap` 只在 hast 变化时重算。
   - **质量基线**：修复 `pnpm -r typecheck` 的历史错误（i18n 三语字典重复的 `agentToolsMode` 键、AgentChat 里两个死变量、`<Icon name="refresh">` 用了不存在的图标名、web tsconfig 缺 `vitest/globals`）、修复 `Toolbar.togglePanel` 测试套件（此前因未导入 `vi` 根本无法加载；断言已对齐当前 `.tb-sidetoggle` 实现并覆盖窄/宽屏两条分支）。
   - 新增用例：core `tests/pipeline-perf.test.ts`（9）、web `src/features/sync/__tests__/ScrollSync.test.ts`（3）。
+- 2026-10-28（输入延迟与渲染线程）：
+  - **纠正一个错误结论**：此前把「4,374 节点全量 reconcile」列为剩余主要成本。实测拆解（320 块 / 2,241 节点）后，单次 `render()` 约 200–220ms 里 reconcile+commit 只占 **约 24ms**，主体是 unified 管线；因此虚拟化收益被高估，输入卡顿的根因是主线程被 `render()` 占住。
+  - **块级增量渲染**（`packages/ui/src/index.tsx`）：顶层块各自 `memo` + 按**内容**比较（而非引用），未变块直接 bailout；用内容比较而非引用，使「中间插入导致的位置平移」也能跳过，同时 key 仍按位置，DOM 原地不动、块内组件（白板/图表）状态不丢。测试 `MarkdownView.incremental.test.tsx`（7）。
+  - **渲染移出主线程**（ADR-01 落地）：core 新增最小入口 `exports["./worker"]`（根入口在 dev 下会把 Node 专用模块一起加载）；`platform/render-offthread.ts` 负责调度与**全链路回退**（无 Worker / 构造失败 / onerror / 超时一律主线程重跑，而不是 reject —— 预览不能空白）；`App.tsx` 的 shiki 预热改为投递到 Worker。
+  - **跳过空转插件**：`render()` 先检测文档特征，不含 `$` 就不注册 `remark-math`/`rehype-katex`，不含 `[[` 就不注册 `rehype-wikilink`（判据取必要条件，只会少跑不会漏渲染）；特征并入 processor 缓存键。无公式文档省 47ms。
+  - **实测**（`apps/web/scripts/bench-preview-reconcile.mjs`，320 块）：连续输入 10 字的主线程长任务 **175ms → 0**；末次按键→预览追平 **349ms → 315ms**；单字符更新全程 **492ms → 438ms**。
+  - **坑位**：`decode-named-character-reference` 的 `browser` 入口在模块顶层执行 `document.createElement`，Worker 加载即抛 `ReferenceError` 并**静默回退主线程**（表现为「优化上线了却没变快」）。该包在 exports 里声明了 `"worker"` 条件，在 `vite.config.ts` 的 `resolve.conditions` 加入 `worker` 即可。
+  - **`remark-parse` 剖析**（中位数，暖机后，`remarkParse` 纯解析）：
+
+    | 变体 | 大小 | 纯 parse | +gfm | 结论 |
+    |---|---|---|---|---|
+    | 混合（中文·表格/代码/列表） | 20KB | 171ms | 226ms | 基准场景 |
+    | 全段落（中文） | 25KB | 165ms | 189ms | GFM 扩展 +24ms |
+    | 同结构英文 | 32KB | 151ms | 286ms | **中文按字符算贵 2–3 倍** |
+    | 去掉 `**`/`` ` ``/链接 | 15KB | **85ms** | 149ms | **内联标记占一半** |
+    | 表格密集 | 8KB | 43ms | **114ms** | **表格扩展 +71ms** |
+    | 代码块密集 | 6KB | 27ms | 27ms | 代码块本身很便宜 |
+
+    三个成本来源都在 micromark 内部（第三方库），没有裁剪空间：CJK 字符级扫描、内联 emphasis/link/code 的 attention 解析、GFM 表格扩展。
+  - **落地**：`detectFeatures()` 增加 GFM 判据（`|` / `~~` / `://` / `www.` / `@` / `[ ]` / `[^`），全不命中就跳过 `remark-gfm`，纯叙述文档省约 24ms；判据取必要条件并全部保守（代码块里出现 `@` 也会走原路径）。新增 2 个缓存隔离用例。
+  - **两个反直觉结论（勿重蹈）**：
+    1. **合并窗口不能调小**：`RENDER_COALESCE_MS` 从 140 → 40 后追平反而变慢（386ms vs 340ms）。窗口短于击键间隔时 Worker 总在渲染「刚刚过期」的那版，最后一次按键要等两次 render。
+    2. **Worker 侧「只保留最新任务」的覆盖式槽位**试过更慢（无收益且增加复杂度），已回退为串行处理：主线程已有尾随合并 + seq 丢弃，请求本就稀疏。
+  - **测量口径修正**：`settleAfterLastKeyMs` 单次采样波动可达 ±100ms（受 Worker 忙闲、机器负载影响）。稳定值约为「合并 140ms + 单次 render 230ms + 克隆/commit 约 55ms ≈ 420ms」，此前记录的 315ms 属低样本，不应作为基线。
+- 2026-10-28（增量解析）：
+  - **方案**：缓存上一次 parse 出的**顶层块**，与新旧文本算公共前缀，前缀内的块直接复用，只重解析尾部（切点取块级节点的 `position.start`，保证落在行首）。**所有后续插件仍在拼接后的完整树上重跑** —— 标题编号、TOC、脚注编号、CJK 排版、sanitize、shiki、data-line 一个不跳，全局依赖因此天然正确；被跳过的只有 micormark 的解析。
+  - **安全边界**：
+    - 保守回退 1 个块（`RECEDE_BLOCKS`），覆盖追加会改动上一块的情形：表格续行、列表续项、引用块续写、未闭合代码块/HTML 块、setext 标题（段落下一行写 `---`）。
+    - 出现**链接引用定义 / 脚注定义**（`^ {0,3}\[...\]:`）时整体禁用增量 —— 这类定义是全局作用域的，切块独立解析会让引用解析不到。
+    - processor 选项或文档特征变化（缓存键不同）一律回退全量。
+  - **缓存纯净性（踩过的坑）**：run 阶段的插件会就地改写树（CJK 排版改文本、自动编号改标题），若把交给 run 的那份直接当缓存，下次复用拿到的就是被改过的节点 —— 表现为 10 个等价性用例全红。正确做法是：缓存保留纯 parse 输出，run 用深拷贝副本。
+  - **等价性回归**：`packages/core/tests/incremental-parse.test.ts`（16 例）。每条用例都同时断言「确实走了增量路径」与「整份结果与全量逐字节一致」（含 `toc` / `words` / `warnings` / `data-line` 行号），另覆盖引用定义禁用、选项切换、文档切换、逐字输入序列。若增量失效（静默回退全量），前者会直接失败，避免测试变成空转。
+  - **实测**（320 块 / 20KB）：core `render()` 中位 **309ms → 139ms**；浏览器端追平 **422–430ms → 266–318ms**（多次采样），主线程长任务仍为 0。
 - **坑位备忘**：
   - `apps/desktop` 的 `vite build` 会 `emptyOutDir`；在 IDE 终端里这一步会被 Node 的 `safe-delete` shim 拦住（`spawnSync genie-trash ... ETIMEDOUT`），表现为「modules 已 transform 完却 build failed」。解法：先手工删掉 `apps/desktop/dist` 再构建，或 `pnpm exec tauri build --no-bundle`（不重复跑前端构建）。
   - `pnpm build` / `pnpm dev` 都默认指向 `apps/web`（pnpm-workspace.yaml），不要用根脚本构建桌面端。
   - 桌面前端产物依赖 `apps/web/public`（`publicDir`，tldraw 本地化资产）；缺该目录 → tldraw 白板挂载失败。
   - 打包安装器需额外工具；本机验证走 `--no-bundle` 出 `src-tauri/target/release/markdown-studio.exe`，双击根目录 `启动 Markdown Studio.bat` 即可运行（GUI 长驻程序不要在 Agent 会话里直接跑，会被进程围栏回收）。
-- 下一步候选：**全量 libgit2**（或 isomorphic-git，本环境 pnpm install 卡住）、**真 WYSIWYG**、GitHub/GitLab 深度同步（PR/冲突）、tldraw 图片/框架形状持久化、**预览虚拟化**（4,374 节点全量 reconcile 是剩余主要成本）、启用真实签名 Secrets。
+- 下一步候选：**全量 libgit2**（或 isomorphic-git，本环境 pnpm install 卡住）、**真 WYSIWYG**、GitHub/GitLab 深度同步（PR/冲突）、tldraw 图片/框架形状持久化、**预览虚拟化**（收益重估：reconcile 只占约 24ms/次，虚拟化主要价值在首屏与滚动绘制，不再是输入延迟的解药）、启用真实签名 Secrets。
+- ~~输入延迟再往下压的唯一手段是增量解析~~ **已完成**（见 2026-10-28 条目）：块级复用 + 后续插件全量重跑，含 16 例等价性回归。若要继续压低，剩余空间在「克隆 mdast（约 15ms）+ 必须全量重跑的 sanitize/shiki/CJK/data-line（约 70ms）」以及跨线程结构化克隆，均已接近当前架构下限。
 - 基线质量：core vitest（587 单测）+ web vitest（140）+ web/core/ui/mcp/desktop typecheck 全绿 + web build。

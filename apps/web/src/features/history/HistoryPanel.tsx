@@ -14,6 +14,9 @@ interface Props {
   onClose: () => void;
 }
 
+/** 差异面板最多渲染多少行（防止超大 diff 一次性铺进 DOM 拖垮渲染） */
+const DIFF_LIMIT = 200;
+
 /** A2：本地快照历史 — 列表 / diff / 恢复 */
 export function HistoryPanel({ onClose }: Props) {
   const docs = useDocuments();
@@ -60,8 +63,10 @@ export function HistoryPanel({ onClose }: Props) {
     onClose();
   };
 
-  const ops =
-    preview !== null ? diffLines(preview, active.content).slice(0, 200) : [];
+  // 修复 E3：原先静默截断到 200 行，用户无从得知还有未显示的差异
+  const allOps = preview !== null ? diffLines(preview, active.content) : [];
+  const ops = allOps.slice(0, DIFF_LIMIT);
+  const truncated = allOps.length > DIFF_LIMIT;
 
   return (
     <div className="panel-pane">
@@ -91,6 +96,13 @@ export function HistoryPanel({ onClose }: Props) {
                     {t(locale, 'historyRestore')}
                   </button>
                 </div>
+                {truncated && (
+                  <div className="history-diff-note">
+                    {t(locale, 'historyDiffTruncated')
+                      .replace('{n}', String(DIFF_LIMIT))
+                      .replace('{total}', String(allOps.length))}
+                  </div>
+                )}
                 <pre className="history-diff-pre">
                   {ops.map((op, i) => (
                     <div key={i} className={`diff-${op.type}`}>

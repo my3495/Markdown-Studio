@@ -309,6 +309,12 @@ function runChecks(): Check[] {
     const h2 = byTagClass('h2', 'sr-only')[0];
     add('F34', '脚注标题本地化', !!h2 && textOf(h2) === '脚注', h2 ? textOf(h2) : 'none');
   }
+  // F35 等号高亮（`==文字==` → <mark>）
+  {
+    const marks = byTag('mark');
+    const ok = marks.length === 1 && textOf(marks[0]).trim() === '这类文字';
+    add('F35', '==高亮== 语法', ok, JSON.stringify(marks.map((m) => textOf(m))));
+  }
   return checks;
 }
 
@@ -327,7 +333,7 @@ function isDisplay(node: any): boolean {
 }
 
 describe('format matrix (render pipeline)', () => {
-  it('all format checks (F01-F34)', () => {
+  it('all format checks (F01-F35)', () => {
     expect(checks.length).toBeGreaterThan(0);
     const failed = checks.filter((c) => !c.ok);
     for (const c of checks) {

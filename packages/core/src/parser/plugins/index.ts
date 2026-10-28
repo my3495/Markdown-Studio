@@ -4,6 +4,7 @@ export { remarkTocPlaceholder } from './remark-toc-placeholder';
 export { remarkDataLine } from './remark-data-line';
 export { remarkCjkTypography } from './remark-cjk-typography';
 export { remarkImageSize } from './remark-image-size';
+export { remarkEqualsHighlight } from './remark-equals-highlight';
 export { remarkAutoNumber, formatNumber, toChinese } from './remark-auto-number';
 export { remarkPagebreak } from './remark-pagebreak';
 export {

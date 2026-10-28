@@ -124,6 +124,9 @@ interface SettingsState {
   recipesOnSave: boolean;
   /** B3：英文拼写检查（轻量词表） */
   spellCheck: boolean;
+  /** 代码块语法高亮（Shiki）。关闭后预览区代码块按纯文本渲染（修复 A：
+   *  RenderOptions.highlight 此前在 UI 层硬编码为 true，用户无法关闭） */
+  codeHighlight: boolean;
   /** B1-lite：阅读态（隐藏源码，近 WYSIWYG 预览） */
   readingMode: boolean;
   /** Agent 主模式：plan=只读（检索增强），build=可调用工具 + 可写 */
@@ -148,6 +151,7 @@ interface SettingsState {
   setVimMode: (v: boolean) => void;
   setRecipesOnSave: (v: boolean) => void;
   setSpellCheck: (v: boolean) => void;
+  setCodeHighlight: (v: boolean) => void;
   setReadingMode: (v: boolean) => void;
   toggleReadingMode: () => void;
 }
@@ -188,6 +192,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
   vimMode: persisted.vimMode ?? false,
   recipesOnSave: persisted.recipesOnSave ?? false,
   spellCheck: persisted.spellCheck ?? false,
+  codeHighlight: persisted.codeHighlight ?? true,
   readingMode: persisted.readingMode ?? false,
   // 老版本可能持久化了 'agent' mode —— 与 'build' 行为完全一致，归并到 'build'
   agentMode:
@@ -231,6 +236,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
   setVimMode: (vimMode) => set({ vimMode }),
   setRecipesOnSave: (recipesOnSave) => set({ recipesOnSave }),
   setSpellCheck: (spellCheck) => set({ spellCheck }),
+  setCodeHighlight: (codeHighlight) => set({ codeHighlight }),
   setReadingMode: (readingMode) => set({ readingMode }),
   toggleReadingMode: () => set((s) => ({ readingMode: !s.readingMode })),
 }));
@@ -286,7 +292,7 @@ export function getRenderOptions(s: SettingsState): RenderOptions {
     gfm: true,
     frontmatter: true,
     math: true,
-    highlight: true,
+    highlight: s.codeHighlight,
     dataLine: true,
     externalLinksNewTab: true,
     typography: s.typography,
