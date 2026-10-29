@@ -6,7 +6,7 @@
  *
  * 依赖（网络/平台/重型）由 SettingsPanel 之外的调用方负责 mock。
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSettings } from '../../stores/settings';
 import { useRecipes } from '../../stores/recipes';
 import { useOllama } from '../../stores/ollama';
@@ -96,6 +96,12 @@ function FontFamilyField({
   const [customMode, setCustomMode] = useState(isCustomValue);
   const showCustomInput = customMode || isCustomValue;
 
+  // 外部把字体改回某个预设（含「重置主题令牌」）时，自动退出自定义模式，
+  // 否则会留着一个空输入框和「自定义…」的选中态
+  useEffect(() => {
+    if (value !== '' && FONT_FAMILY_PRESETS.includes(value)) setCustomMode(false);
+  }, [value]);
+
   return (
     <div className="ui-field ui-field-font">
       <span>{t(locale, 'themeTokenFontFamily')}</span>
@@ -129,17 +135,29 @@ function FontFamilyField({
           placeholder="PingFang SC, 'Microsoft YaHei', sans-serif"
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={() => {
+            // 点了「自定义…」却什么都没填：失焦即回到预设，不留空壳
+            if (!value.trim()) setCustomMode(false);
+          }}
         />
       )}
     </div>
   );
 }
 
+/** 合法的十六进制颜色；非法值（含空）一律回退到主题默认色 */
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
 export function ThemeSection() {
   const s = useSettings();
   const locale = s.locale;
-  /** 未自定义时展示当前主题的真实令牌值，避免色块停留在浏览器默认蓝色 */
-  const themeTokens = getThemeVariables(resolveTheme(s.theme));
+  /**
+   * 未自定义时展示当前主题的真实令牌值，避免色块停留在浏览器默认蓝色。
+   * 令牌表是纯数据，随主题解析结果缓存即可（每次渲染重算没有意义）。
+   */
+  const resolved = resolveTheme(s.theme);
+  const themeTokens = useMemo(() => getThemeVariables(resolved), [resolved]);
+
   return (
     <div className="settings-card">
       {CUSTOM_THEME_TOKENS.map((tok) => {
@@ -153,20 +171,23 @@ export function ThemeSection() {
             />
           );
         }
+        const label = t(locale, tok.labelKey);
         return (
           <div key={tok.key} className="ui-field">
-            <span>{t(locale, tok.labelKey)}</span>
+            <span>{label}</span>
             {tok.kind === 'color' ? (
               <input
                 className="ui-input"
                 type="color"
                 value={
-                  /^#[0-9a-fA-F]{6}$/.test(s.customVars[tok.key] ?? '')
+                  HEX_COLOR_RE.test(s.customVars[tok.key] ?? '')
                     ? s.customVars[tok.key]!
                     : themeTokens[tok.key] ?? '#b4542f'
                 }
                 onChange={(e) => s.setCustomVar(tok.key, e.target.value)}
-                title={tok.key}
+                /* 悬浮/读屏都给出可读名称，而不是 --md-color-* 内部变量名 */
+                title={label}
+                aria-label={label}
               />
             ) : (
               <input
@@ -175,6 +196,7 @@ export function ThemeSection() {
                 placeholder={tok.placeholder}
                 value={s.customVars[tok.key] ?? ''}
                 onChange={(e) => s.setCustomVar(tok.key, e.target.value)}
+                aria-label={label}
               />
             )}
           </div>

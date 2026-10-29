@@ -212,9 +212,13 @@ export const useSettings = create<SettingsState>((set, get) => ({
   toggleTypewriter: () => set((s) => ({ typewriterMode: !s.typewriterMode })),
   setLocale: (locale) => set({ locale }),
   setCustomVar: (k, v) =>
-    set((s) => ({
-      customVars: sanitizeCustomVars({ ...s.customVars, [k]: v }),
-    })),
+    set((s) => {
+      const next = { ...s.customVars };
+      // 清空输入 = 恢复默认：直接删键，别留空串（空值写不进 CSS，会让 :root 残留上一次的值）
+      if (!v.trim()) delete next[k];
+      else next[k] = v;
+      return { customVars: sanitizeCustomVars(next) };
+    }),
   clearCustomVars: () => set({ customVars: {} }),
   setFooter: (footer) => set({ footer }),
   setAgent: (patch) => {

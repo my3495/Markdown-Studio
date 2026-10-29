@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EditorView } from '@codemirror/view';
 import { useSettings } from './stores/settings';
 import { useDocuments } from './stores/document';
-import { applyTheme, resolveTheme } from './platform/theme';
+import { applyTheme, resolveTheme, watchSystemTheme } from './platform/theme';
 import { shortcutLabel, useShortcuts } from './platform/shortcut/registry';
 import { getFsBackend, type OpenedFile } from './platform/fs/registry';
 import { getFileDropSource } from './platform/fs/drop';
@@ -460,6 +460,12 @@ export function App() {
   // 主题应用
   useEffect(() => {
     applyTheme(resolveTheme(s.theme), s.customVars);
+  }, [s.theme, s.customVars]);
+
+  // 跟随系统：系统在浅/深之间切换时立即跟随，不必等下一次设置变更
+  useEffect(() => {
+    if (s.theme !== 'system') return;
+    return watchSystemTheme((resolved) => applyTheme(resolved, s.customVars));
   }, [s.theme, s.customVars]);
 
   // 书写区宽度
