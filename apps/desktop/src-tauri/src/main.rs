@@ -7,12 +7,18 @@
 
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{Emitter, Manager, State};
+
+/// 「用本工具打开 md 文件」时，向前端推送路径的事件名
+const OPEN_PATH_EVENT: &str = "mdstudio://open-path";
 
 struct McpState {
     child: Mutex<Option<Child>>,
     info: Mutex<Option<McpInfo>>,
 }
+
+/** 启动参数里携带的文件路径（Windows 双击关联文件 / 命令行传参） */
+struct StartupPath(Mutex<Option<String>>);
 
 #[derive(Clone, serde::Serialize)]
 struct McpInfo {
@@ -139,18 +145,91 @@ fn mcp_status(state: State<'_, McpState>) -> Option<McpInfo> {
     state.info.lock().ok().and_then(|g| g.clone())
 }
 
+/// 从命令行参数里挑出第一个「像 Markdown 文件」的参数（跳过程序名与开关）
+fn pick_md_path<I: IntoIterator<Item = String>>(args: I) -> Option<String> {
+    args.into_iter().skip(1).find(|a| {
+        let lower = a.to_ascii_lowercase();
+        !lower.starts_with('-')
+            && (lower.ends_with(".md") || lower.ends_with(".markdown") || lower.ends_with(".txt"))
+    })
+}
+
+/** 前端启动后取走一次启动参数路径（取完即清空，避免重复打开） */
+#[tauri::command]
+fn take_startup_path(state: State<'_, StartupPath>) -> Option<String> {
+    state.0.lock().ok().and_then(|mut g| g.take())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 fn main() {
-    tauri::Builder::default()
+    let startup = pick_md_path(std::env::args());
+
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // 已在运行：把「再双击一个 md」的路径转发给现有实例
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(path) = pick_md_path(argv) {
+                let _ = app.emit(OPEN_PATH_EVENT, path);
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.set_focus();
+                }
+            }
+        }))
         .manage(McpState {
             child: Mutex::new(None),
             info: Mutex::new(None),
         })
-        .invoke_handler(tauri::generate_handler![mcp_start, mcp_stop, mcp_status])
-        .run(tauri::generate_context!())
-        .expect("error while running Markdown Studio");
+        .manage(StartupPath(Mutex::new(startup)))
+        .invoke_handler(tauri::generate_handler![
+            mcp_start,
+            mcp_stop,
+            mcp_status,
+            take_startup_path
+        ])
+        .build(tauri::generate_context!())
+        .expect("error while building Markdown Studio");
+
+    // macOS/iOS/Android：系统通过 RunEvent::Opened 把文件交给应用。
+    // Windows/Linux 没有该事件，靠上面的启动参数 + single-instance 转发覆盖。
+    #[allow(unused_variables)]
+    app.run(|handle, event| {
+        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
+        if let tauri::RunEvent::Opened { urls } = event {
+            for u in urls {
+                if let Ok(p) = u.to_file_path() {
+                    let _ = handle.emit(OPEN_PATH_EVENT, p.to_string_lossy().to_string());
+                }
+            }
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pick_md_path;
+
+    fn args(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn picks_first_doc_arg_and_skips_binary_and_flags() {
+        assert_eq!(
+            pick_md_path(args(&["Markdown Studio.exe", "--flag", "D:/notes/a.md"])),
+            Some("D:/notes/a.md".to_string())
+        );
+        assert_eq!(
+            pick_md_path(args(&["bin", "-x", "d:/n/b.MARKDOWN"])),
+            Some("d:/n/b.MARKDOWN".to_string())
+        );
+    }
+
+    #[test]
+    fn returns_none_without_doc_arg() {
+        assert_eq!(pick_md_path(args(&["Markdown Studio.exe", "--flag"])), None);
+        assert_eq!(pick_md_path(args(&["Markdown Studio.exe"])), None);
+    }
 }

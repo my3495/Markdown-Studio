@@ -6,6 +6,11 @@ import { webFs, type OpenedFile } from './web';
  */
 export interface FsBackend {
   openFile(): Promise<OpenedFile | null>;
+  /**
+   * 按绝对路径直接打开（桌面端「双击 md 文件用本工具打开」走这条）。
+   * Web 端没有绝对路径语义，可不实现。
+   */
+  openPath?(path: string): Promise<OpenedFile | null>;
   /** path 非空且实现支持时写回原路径，否则另存（Web 端为下载） */
   saveFile(path: string | null, name: string, content: string): Promise<string>;
 }

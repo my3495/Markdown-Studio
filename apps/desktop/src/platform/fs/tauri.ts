@@ -12,18 +12,28 @@ const OPEN_FILTERS = [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] 
 const SAVE_FILTERS = [{ name: 'Markdown', extensions: ['md'] }];
 
 export const tauriFs: FsBackend = {
+  /** 按绝对路径读取并做 CJK 编码自动检测（文件关联 / 双击打开也复用） */
+  async openPath(selected: string): Promise<OpenedFile | null> {
+    if (!selected) return null;
+    try {
+      const detected = decodeBytes(await readFile(selected));
+      return {
+        id: `file-${selected}-${Date.now()}`,
+        name: selected.split(/[\\/]/).pop() ?? selected,
+        path: selected,
+        content: detected.text,
+        encoding: detected.encoding,
+      };
+    } catch {
+      return null;
+    }
+  },
+
   async openFile(): Promise<OpenedFile | null> {
     const selected = await open({ multiple: false, filters: OPEN_FILTERS });
     if (typeof selected !== 'string' || !selected) return null;
     // 读取字节后做 CJK 编码自动检测（与 Web 端行为一致）
-    const detected = decodeBytes(await readFile(selected));
-    return {
-      id: `file-${selected}-${Date.now()}`,
-      name: selected.split(/[\\/]/).pop() ?? selected,
-      path: selected,
-      content: detected.text,
-      encoding: detected.encoding,
-    };
+    return tauriFs.openPath!(selected);
   },
 
   async saveFile(path: string | null, name: string, content: string): Promise<string> {
