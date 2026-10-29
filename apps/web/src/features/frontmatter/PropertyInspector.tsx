@@ -12,6 +12,7 @@ import {
 import { useDocuments } from '../../stores/document';
 import { useSettings } from '../../stores/settings';
 import { t } from '../../i18n';
+import { flushEditor } from '../editor/flush';
 
 /** 属性检查器：可视化编辑 YAML frontmatter，尽量保留注释与引号 */
 export function PropertyInspector() {
@@ -48,8 +49,13 @@ export function PropertyInspector() {
   }
 
   const apply = (next: ReturnType<typeof parseFrontmatter>) => {
-    const text = serializeFrontmatter(next);
-    void docs.updateContent(active.id, text);
+    // flush 后再取最新正文：属性面板只改 frontmatter，正文必须保持编辑器里的最新内容，
+    // 否则「打完字立刻改属性」会把刚输入的正文整段回退到 150ms 前的版本。
+    flushEditor();
+    const st = useDocuments.getState();
+    const cur = st.docs[active.id]?.content ?? active.content;
+    const text = serializeFrontmatter({ ...next, body: parseFrontmatter(cur).body });
+    void st.updateContent(active.id, text);
   };
 
   return (

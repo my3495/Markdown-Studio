@@ -14,6 +14,7 @@ import { useVault } from '../../stores/vault';
 import { useDocuments } from '../../stores/document';
 import { useSettings } from '../../stores/settings';
 import { t } from '../../i18n';
+import { flushEditor } from '../editor/flush';
 
 const CFG_KEY = 'md-studio-sync-cfg';
 
@@ -77,7 +78,9 @@ export function SyncPanel() {
   };
 
   const toNotes = (): SyncNote[] => {
-    // 推送前把打开中的文档写回 vault，避免漏掉未关标签的改动
+    // 推送前把打开中的文档写回 vault，避免漏掉未关标签的改动。
+    // 必须先 flush 编辑器：否则最后 150ms 内输入的字还在防抖里，推上去的是旧正文。
+    flushEditor();
     syncFromDocs();
     return useVault.getState().notes.map((n) => ({
       id: n.id,
@@ -147,6 +150,9 @@ export function SyncPanel() {
     setBusy(true);
     setMsg(null);
     persistCfg();
+    // 先用 flush 落定本地输入：远程内容会直接写进 store，
+    // 未 flush 的话编辑器随后会把旧文本推回来覆盖掉刚拉下来的内容。
+    flushEditor();
     try {
       if (isGitProvider(provider)) {
         const bundle = await pullFromGitHost(

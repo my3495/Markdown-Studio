@@ -25,6 +25,7 @@ import { getRenderOptions } from '../../stores/settings';
 import { runMatchedRecipes } from '../../platform/recipes/runner';
 import { saveShare, shareUrlForId, shareUrlForPayload } from '../../platform/share/store';
 import { Icon } from '../../components/Icon';
+import { flushEditor } from '../editor/flush';
 import { useUi } from '../../stores/ui';
 import { useVault } from '../../stores/vault';
 
@@ -296,9 +297,13 @@ export function Toolbar({ editorView, onSlides, onOpenFolder, folderActive }: Pr
   };
   const onInsertBoard = () => {
     if (!active) return;
-    void docs.updateContent(
+    // 先落定编辑器里未同步的输入：否则刚打完字就插入，正文会被防抖回写覆盖
+    flushEditor();
+    const st = useDocuments.getState();
+    const cur = st.docs[active.id]?.content ?? active.content;
+    void st.updateContent(
       active.id,
-      `${active.content.replace(/\s*$/, '')}\n\n\`\`\`tldraw\n{"v":1,"strokes":[]}\n\`\`\`\n`
+      `${cur.replace(/\s*$/, '')}\n\n\`\`\`tldraw\n{"v":1,"strokes":[]}\n\`\`\`\n`
     );
     setMoreOpen(false);
   };

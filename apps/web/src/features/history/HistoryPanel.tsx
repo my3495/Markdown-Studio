@@ -9,6 +9,7 @@ import { idbSnapshotFs } from '../../platform/fs/idbSnapshot';
 import { useDocuments } from '../../stores/document';
 import { useSettings } from '../../stores/settings';
 import { t } from '../../i18n';
+import { flushEditor } from '../editor/flush';
 
 interface Props {
   onClose: () => void;
@@ -59,6 +60,8 @@ export function HistoryPanel({ onClose }: Props) {
   const restore = async () => {
     if (!selected || preview === null) return;
     if (!window.confirm(t(locale, 'historyRestoreConfirm'))) return;
+    // 恢复是外部写入：先落定编辑器输入，避免被随后的防抖 emit 覆盖回旧正文
+    flushEditor();
     await docs.updateContent(active.id, preview);
     onClose();
   };

@@ -8,6 +8,7 @@ import { getFsBackend, type OpenedFile } from './platform/fs/registry';
 import { getFileDropSource } from './platform/fs/drop';
 import { idbSnapshotFs } from './platform/fs/idbSnapshot';
 import { CodeMirrorEditor } from './features/editor/CodeMirrorEditor';
+import { flushEditor, registerEditorFlush } from './features/editor/flush';
 import { SelectionBubble } from './features/editor/SelectionBubble';
 import { MarkdownPreview } from './features/preview/MarkdownPreview';
 import { PreviewBoundary } from './features/preview/PreviewBoundary';
@@ -227,7 +228,7 @@ export function App() {
     // 编辑器向 store 的同步是 150ms 防抖的，且防抖未落定时编辑器会**丢弃**外部写入
     // （CodeMirrorEditor 的 content effect）：先落定再写，否则白板的连续操作
     // （画完 150ms 内再擦/清空）会被随后的防抖 emit 用旧文本整条覆盖丢失。
-    editorFlushRef.current?.();
+    flushEditor();
     const st = useDocuments.getState();
     const d = st.activeId ? st.docs[st.activeId] : null;
     if (!d) return;
@@ -237,7 +238,7 @@ export function App() {
 
   const onEditHeading = useCallback((line: number, text: string) => {
     // 同上：预览内联改标题也是外部写入，落定编辑器输入后再改，避免被防抖回写覆盖
-    editorFlushRef.current?.();
+    flushEditor();
     const st = useDocuments.getState();
     const d = st.activeId ? st.docs[st.activeId] : null;
     if (!d) return;
@@ -250,6 +251,12 @@ export function App() {
   const [editorView, setEditorView] = useState<EditorView | null>(null);
   /** 编辑器「立即同步到 store」句柄：输入防抖 150ms，保存前必须先 flush */
   const editorFlushRef = useRef<(() => void) | null>(null);
+
+  // 注册到模块级入口，供「不经编辑器直接改正文」的其它入口复用同一个 flush
+  useEffect(() => {
+    registerEditorFlush(() => editorFlushRef.current?.());
+    return () => registerEditorFlush(null);
+  }, []);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const syncRef = useRef<ScrollSync | null>(null);
   const mainRef = useRef<HTMLDivElement | null>(null);

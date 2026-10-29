@@ -19,6 +19,7 @@ import { useRecipes } from '../../stores/recipes';
 import { useAgentSessions, type SessionMessage } from '../../stores/agentSessions';
 import { RECIPE_PROMPT_KEY } from '../../platform/recipes/runner';
 import { Icon } from '../../components/Icon';
+import { flushEditor } from '../editor/flush';
 import { t } from '../../i18n';
 import { toast } from '../../stores/toast';
 import {
@@ -586,10 +587,14 @@ export function AgentChat({ onClose }: { onClose: () => void }) {
       return;
     }
     if (!target) return;
+    // 先落定编辑器未同步的输入，再读最新正文：否则插入会把刚打的字整段回退
+    flushEditor();
+    const st = useDocuments.getState();
+    const cur = st.docs[active.id]?.content ?? active.content;
     // finalAnswerText(m) === m.text（preamble 已分离，不入正文）
     const block = buildInsertBlock(target.text, t(s.locale, 'agentInsertBlockTitle'));
     // updateContent 在单测里可能返回 vi.fn()（=undefined），统一防御
-    const p = docs.updateContent(active.id, `${active.content}${block}`);
+    const p = st.updateContent(active.id, `${cur}${block}`);
     if (p && typeof (p as Promise<unknown>).then === 'function') {
       (p as Promise<unknown>).then(() => {
         toast(t(s.locale, 'agentCopiedToNote'), { tone: 'success' });
