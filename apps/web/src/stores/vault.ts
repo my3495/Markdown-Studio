@@ -26,16 +26,22 @@ import {
   setDefaultVaultBackend,
 } from '../platform/vault/registry';
 import { fsAccessBackend } from '../platform/vault/fsAccess';
+// 仓库根目录的使用指南（Vite `?raw` 内联为字符串，构建期即定稿）
+import usageGuideMd from '../../../../使用指南.md?raw';
 
 setDefaultVaultBackend(fsAccessBackend);
 
-/** 演示种子：构成一个小的互联知识库，便于立即体验双链/反链/图谱/搜索 */
+/**
+ * 演示种子：构成一个小的互联知识库，便于立即体验双链/反链/图谱/搜索。
+ *
+ * 使用指南直接引用仓库根目录的 `使用指南.md`（`?raw` 在构建期内联），
+ * 避免「文档改了、应用里的示例还是旧文案」这种双份维护失真。
+ */
 const SEED: VaultNote[] = [
   {
     id: 'demo-guide',
     name: '使用指南.md',
-    content:
-      '# 使用指南\n\n欢迎使用 Markdown Studio 知识库。参见 [[双链与反链]]、[[知识图谱]] 与 [[全文搜索]]。\n',
+    content: usageGuideMd,
   },
   {
     id: 'demo-links',

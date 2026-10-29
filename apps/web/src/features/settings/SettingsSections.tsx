@@ -13,8 +13,14 @@ import { useOllama } from '../../stores/ollama';
 import { useModels } from '../../stores/models';
 import { useDocuments } from '../../stores/document';
 import { toast } from '../../stores/toast';
-import { LOCALES, t } from '../../i18n';
-import { CUSTOM_THEME_TOKENS, getThemeVariables, type TypographyOptions } from '@md-studio/core';
+import { LOCALES, t, type Locale } from '../../i18n';
+import {
+  CUSTOM_THEME_TOKENS,
+  FONT_FAMILY_PRESETS,
+  FONT_FAMILY_TOKEN,
+  getThemeVariables,
+  type TypographyOptions,
+} from '@md-studio/core';
 import { resolveTheme } from '../../platform/theme';
 import { runMatchedRecipes } from '../../platform/recipes/runner';
 import { localizeRecipeName } from '../agent/agentChatUtils';
@@ -66,6 +72,69 @@ export function TypographySection() {
 
 /* ───────────────────────── 主题 / 令牌 ───────────────────────── */
 
+/** 「自定义字体」在下拉里用哨兵值表示，避免和空值（跟随主题）混淆 */
+const FONT_CUSTOM = '__custom__';
+
+/**
+ * 字体选择器。
+ *
+ * 早期实现是受控 input + datalist：datalist 是「输入联想」而非下拉选择器，
+ * 一旦输入框里已是某个候选，浏览器会把列表过滤成只剩这一项 ——
+ * 于是「选过一次字体后就再也选不了别的」。这里改成真正的 select：
+ * 预设 + 自定义，选自定义时才显示文本输入框。
+ */
+function FontFamilyField({
+  value,
+  locale,
+  onChange,
+}: {
+  value: string;
+  locale: Locale;
+  onChange: (v: string) => void;
+}) {
+  const isCustomValue = value !== '' && !FONT_FAMILY_PRESETS.includes(value);
+  const [customMode, setCustomMode] = useState(isCustomValue);
+  const showCustomInput = customMode || isCustomValue;
+
+  return (
+    <div className="ui-field ui-field-font">
+      <span>{t(locale, 'themeTokenFontFamily')}</span>
+      <select
+        className="ui-select ui-select-font"
+        value={showCustomInput ? FONT_CUSTOM : value}
+        onChange={(e) => {
+          const next = e.target.value;
+          if (next === FONT_CUSTOM) {
+            setCustomMode(true);
+            onChange('');
+            return;
+          }
+          setCustomMode(false);
+          onChange(next);
+        }}
+        title={value || t(locale, 'themeFontDefault')}
+      >
+        <option value="">{t(locale, 'themeFontDefault')}</option>
+        {FONT_FAMILY_PRESETS.map((preset) => (
+          <option key={preset} value={preset}>
+            {preset}
+          </option>
+        ))}
+        <option value={FONT_CUSTOM}>{t(locale, 'themeFontCustom')}</option>
+      </select>
+      {showCustomInput && (
+        <input
+          className="ui-input ui-input-font ui-input-font-custom"
+          type="text"
+          placeholder="PingFang SC, 'Microsoft YaHei', sans-serif"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+    </div>
+  );
+}
+
 export function ThemeSection() {
   const s = useSettings();
   const locale = s.locale;
@@ -73,32 +142,44 @@ export function ThemeSection() {
   const themeTokens = getThemeVariables(resolveTheme(s.theme));
   return (
     <div className="settings-card">
-      {CUSTOM_THEME_TOKENS.map((tok) => (
-        <div key={tok.key} className="ui-field">
-          <span>{t(locale, tok.labelKey)}</span>
-          {tok.kind === 'color' ? (
-            <input
-              className="ui-input"
-              type="color"
-              value={
-                /^#[0-9a-fA-F]{6}$/.test(s.customVars[tok.key] ?? '')
-                  ? s.customVars[tok.key]!
-                  : themeTokens[tok.key] ?? '#b4542f'
-              }
-              onChange={(e) => s.setCustomVar(tok.key, e.target.value)}
-              title={tok.key}
-            />
-          ) : (
-            <input
-              className="ui-input"
-              type="text"
-              placeholder={tok.placeholder}
+      {CUSTOM_THEME_TOKENS.map((tok) => {
+        if (tok.key === FONT_FAMILY_TOKEN) {
+          return (
+            <FontFamilyField
+              key={tok.key}
               value={s.customVars[tok.key] ?? ''}
-              onChange={(e) => s.setCustomVar(tok.key, e.target.value)}
+              locale={locale}
+              onChange={(v) => s.setCustomVar(tok.key, v)}
             />
-          )}
-        </div>
-      ))}
+          );
+        }
+        return (
+          <div key={tok.key} className="ui-field">
+            <span>{t(locale, tok.labelKey)}</span>
+            {tok.kind === 'color' ? (
+              <input
+                className="ui-input"
+                type="color"
+                value={
+                  /^#[0-9a-fA-F]{6}$/.test(s.customVars[tok.key] ?? '')
+                    ? s.customVars[tok.key]!
+                    : themeTokens[tok.key] ?? '#b4542f'
+                }
+                onChange={(e) => s.setCustomVar(tok.key, e.target.value)}
+                title={tok.key}
+              />
+            ) : (
+              <input
+                className="ui-input"
+                type="text"
+                placeholder={tok.placeholder}
+                value={s.customVars[tok.key] ?? ''}
+                onChange={(e) => s.setCustomVar(tok.key, e.target.value)}
+              />
+            )}
+          </div>
+        );
+      })}
       <button type="button" className="ui-btn" onClick={() => s.clearCustomVars()}>
         {t(locale, 'resetTheme')}
       </button>

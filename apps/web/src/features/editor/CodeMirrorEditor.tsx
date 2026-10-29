@@ -36,7 +36,9 @@ const editorThemeSpec = {
   },
   '.cm-content': {
     caretColor: 'var(--md-color-accent)',
-    fontFamily: 'var(--md-font-mono)',
+    /* 默认等宽；用户在「主题与配色 → 字体」选了字体后由 applyTheme 改写该令牌，
+       否则会出现“预览变了、书写区没反应” */
+    fontFamily: 'var(--md-font-editor)',
     maxWidth: 'var(--md-max-width, 820px)',
     margin: '0 auto',
     padding: '12px 20px',

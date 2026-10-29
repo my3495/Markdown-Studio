@@ -11,6 +11,8 @@
   color-scheme: light;
   /* 以下三项由 core 主题注入覆盖；此处是 JS 注入前的首屏兜底，值与 THEME_VARIABLES 保持一致。 */
   --md-font-mono: 'SFMono-Regular', 'JetBrains Mono', Consolas, 'Liberation Mono', monospace;
+  /* 书写区字体：默认等宽；用户在「主题与配色 → 字体」里自定义后由 applyTheme 改写 */
+  --md-font-editor: 'SFMono-Regular', 'JetBrains Mono', Consolas, 'Liberation Mono', monospace;
   --md-reading-font-size: 1.08rem;
   --md-reading-line-height: 1.8;
 
@@ -1479,7 +1481,8 @@ body.panel-resizing .panel-divider::after {
   font-size: var(--md-font-size);
 }
 .cm-editor .cm-scroller {
-  font-family: var(--md-font-mono);
+  /* 与 .cm-content 保持一致：默认等宽，用户自定义「字体」后跟随正文 */
+  font-family: var(--md-font-editor);
   line-height: var(--md-line-height);
   padding: 12px 0;
 }
@@ -2508,6 +2511,22 @@ button.sb-item:disabled:hover {
 }
 .ui-input {
   width: 110px;
+}
+/* 字体栈（`'PingFang SC', 'Microsoft YaHei', sans-serif`）比数字长，给足宽度 */
+.ui-input-font {
+  width: 210px;
+  font-size: 12px;
+}
+/* 字体行：下拉 +（选“自定义”时的）输入框，放不下就换行，输入框独占一行 */
+.ui-field-font {
+  flex-wrap: wrap;
+}
+.ui-select-font {
+  width: 240px;
+  font-size: 12px;
+}
+.ui-input-font-custom {
+  flex: 1 0 100%;
 }
 .ui-input:focus,
 .ui-select:focus {
