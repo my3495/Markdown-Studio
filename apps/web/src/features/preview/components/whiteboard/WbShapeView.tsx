@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import type { WbShape, WbStroke } from '@md-studio/core';
+import { wbTextSizeToPx, type WbShape, type WbStroke } from '@md-studio/core';
 
 /** 全白板共用的箭头 marker id（同一页面内各白板定义相同，渲染结果一致） */
 export const WB_ARROW_MARKER_ID = 'wb-arrowhead';
@@ -62,7 +62,7 @@ export function WbShapeView({ el }: { el: WbShape }): ReactElement {
       );
     case 'text':
       return (
-        <text x={el.x} y={el.y} fill={el.color} fontSize={16}>
+        <text x={el.x} y={el.y} fill={el.color} fontSize={wbTextSizeToPx(el.size)}>
           {el.text}
         </text>
       );

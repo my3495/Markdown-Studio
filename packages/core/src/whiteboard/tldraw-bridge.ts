@@ -9,7 +9,14 @@
  *   其余 tldraw 形状（图片/框架/视频/便签等）在写回时忽略（fence 协议当前不承载）。
  */
 
-import type { WbDocument, WbPoint, WbShape, WbStroke } from './tldraw-fence';
+import {
+  toWbTextSize,
+  wbTextSizeToPx,
+  type WbDocument,
+  type WbPoint,
+  type WbShape,
+  type WbStroke,
+} from './tldraw-fence';
 
 export interface TlShapePartialLike {
   id: string;
@@ -168,6 +175,7 @@ export function wbToTlShapes(doc: WbDocument): TlShapePartialLike[] {
       });
     } else if (sh.type === 'text') {
       const text = String(sh.text ?? '').slice(0, 2000);
+      const size = toWbTextSize(sh.size);
       out.push({
         id: tlShapeIdFor('text', sh.id, i),
         type: 'text',
@@ -176,10 +184,10 @@ export function wbToTlShapes(doc: WbDocument): TlShapePartialLike[] {
         props: {
           text,
           color: hexToTlColor(sh.color || '#1d1d1d'),
-          size: 'm',
+          size,
           font: 'draw',
           textAlign: 'start',
-          w: Math.max(16, text.length * 9),
+          w: Math.max(16, text.length * wbTextSizeToPx(size) * 0.6),
           scale: 1,
           autoSize: false,
         },
@@ -295,6 +303,8 @@ export function tlShapesToWb(shapes: readonly unknown[]): WbDocument {
           y,
           text,
           color: tlColorToHex(props.color),
+          // tldraw 的字号档位与 fence 一致；缺省落 'm'，与旧文档观感相同
+          size: toWbTextSize(props.size),
         });
       }
     }

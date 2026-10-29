@@ -7,7 +7,12 @@ import {
   widthToTlSize,
   tlSizeToWidth,
 } from '../src/whiteboard/tldraw-bridge';
-import { parseTldrawFence, serializeTldrawFence } from '../src/whiteboard/tldraw-fence';
+import {
+  parseTldrawFence,
+  serializeTldrawFence,
+  toWbTextSize,
+  wbTextSizeToPx,
+} from '../src/whiteboard/tldraw-fence';
 
 describe('颜色与尺寸映射', () => {
   it('HEX → 最近命名色', () => {
@@ -124,6 +129,49 @@ describe('tldraw → WbDocument 往返', () => {
     const round = tlShapesToWb(partials);
     expect(round.strokes[0]!.id).toBe('s0');
     expect((round.shapes ?? [])[0]!.id).toBe('rect1');
+  });
+
+  it('文字字号档位可往返（s/m/l/xl），缺省回落 m', () => {
+    expect(wbTextSizeToPx('s')).toBe(12);
+    expect(wbTextSizeToPx('m')).toBe(16);
+    expect(wbTextSizeToPx('l')).toBe(24);
+    expect(wbTextSizeToPx('xl')).toBe(32);
+    expect(wbTextSizeToPx(undefined)).toBe(16);
+    expect(toWbTextSize('bad')).toBe('m');
+
+    const doc = {
+      v: 1 as const,
+      strokes: [],
+      shapes: [
+        { id: 'text1', type: 'text' as const, x: 10, y: 20, text: '大号', color: '#1d1d1d', size: 'xl' as const },
+        { id: 'text2', type: 'text' as const, x: 30, y: 40, text: '默认', color: '#1d1d1d' },
+      ],
+    };
+    const tl = wbToTlShapes(doc);
+    expect(tl[0]!.props.size).toBe('xl');
+    expect(tl[1]!.props.size).toBe('m');
+    // 字号影响信封宽度估算
+    expect(Number(tl[0]!.props.w)).toBeGreaterThan(Number(tl[1]!.props.w));
+
+    const round = tlShapesToWb(tl);
+    const sizes = (round.shapes ?? []).map((s) => (s.type === 'text' ? s.size : undefined));
+    expect(sizes).toEqual(['xl', 'm']);
+  });
+
+  it('fence 归一化：非法字号被丢弃，缺省不落盘', () => {
+    const parsed = parseTldrawFence(
+      JSON.stringify({
+        v: 1,
+        strokes: [],
+        shapes: [
+          { type: 'text', x: 1, y: 2, text: 'a', color: '#000', size: 'huge' },
+          { type: 'text', x: 3, y: 4, text: 'b', color: '#000' },
+        ],
+      })
+    );
+    const shapes = parsed.shapes ?? [];
+    expect(shapes.map((s) => (s.type === 'text' ? s.size : null))).toEqual(['m', undefined]);
+    expect(serializeTldrawFence(parsed)).not.toContain('huge');
   });
 
   it('忽略非支持形状与脏数据（draw 脏点过滤 / 空文本）', () => {

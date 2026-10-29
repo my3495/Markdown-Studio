@@ -4,12 +4,15 @@ import {
   hexToTlColor,
   serializeTldrawFence,
   tlSizeToWidth,
+  toWbTextSize,
+  wbTextSizeToPx,
   widthToTlSize,
   WB_PALETTE,
   type WbDocument,
   type WbPoint,
   type WbShape,
   type WbStroke,
+  type WbTextSize,
 } from '@md-studio/core';
 import { Icon, type IconName } from '../../../components/Icon';
 import { t } from '../../../i18n';
@@ -63,6 +66,14 @@ const HOTKEYS: Record<string, Tool> = {
   t: 'text',
   e: 'eraser',
 };
+
+/** 字号档位（与 fence 的 size / tldraw 的 size 对齐） */
+const TEXT_SIZES: { size: WbTextSize; label: string }[] = [
+  { size: 's', label: 'S' },
+  { size: 'm', label: 'M' },
+  { size: 'l', label: 'L' },
+  { size: 'xl', label: 'XL' },
+];
 
 const WIDTH_STEPS = [
   { size: 's', width: tlSizeToWidth('s') },
@@ -119,8 +130,16 @@ function bboxOf(el: StrokeEl | ShapeEl): { x: number; y: number; w: number; h: n
         w: Math.abs(el.x2 - el.x1),
         h: Math.abs(el.y2 - el.y1),
       };
-    case 'text':
-      return { x: el.x, y: el.y - 14, w: el.text.length * 9, h: 20 };
+    case 'text': {
+      // 命中框按实际字号估算：CJK 约等于 1em/字，其余字符约 0.62em
+      const px = wbTextSizeToPx(el.size);
+      return {
+        x: el.x,
+        y: el.y - px * 0.85,
+        w: Math.max(px, el.text.length * px * 0.62),
+        h: px * 1.15,
+      };
+    }
   }
 }
 
@@ -189,6 +208,8 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
     () => WB_PALETTE.find((c) => c.name === 'blue')?.hex ?? '#3b82f6'
   );
   const [width, setWidth] = useState<number>(() => tlSizeToWidth('m'));
+  /** 新建文字的字号档位（旧文档缺省 'm' = 16px） */
+  const [textSize, setTextSize] = useState<WbTextSize>('m');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editing, setEditing] = useState<WbPoint | null>(null);
@@ -365,6 +386,70 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
     [selectedId, applyModel, currentModel]
   );
 
+  /**
+   * 字号：既作用于「待提交的文字」（输入框即时变化），也作用于选中的文字形状。
+   * 之前文字字号被硬编码 16px、且线宽控件对非笔迹一律禁用，导致完全无法调大小。
+   */
+  const applyTextSize = useCallback(
+    (size: WbTextSize) => {
+      setTextSize(size);
+      if (!selectedId) return;
+      const m = currentModel();
+      if (!m.shapes.some((x) => x.id === selectedId && x.type === 'text')) return;
+      applyModel(
+        {
+          strokes: m.strokes,
+          shapes: m.shapes.map((x) =>
+            x.id === selectedId && x.type === 'text'
+              ? { ...x, ...(size === 'm' ? { size: undefined } : { size }) }
+              : x
+          ),
+        },
+        { emit: true, record: true }
+      );
+    },
+    [selectedId, applyModel, currentModel]
+  );
+
+  /** 未确认前的文字可直接拖动手柄移动（避免只能先提交再重新建） */
+  const textDragRef = useRef<{ startClient: WbPoint; start: WbPoint; scale: number } | null>(null);
+
+  const onTextHandleDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const svg = svgRef.current;
+    const ctm = svg?.getScreenCTM();
+    const pos = editingRef.current;
+    if (!svg || !ctm || !pos) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    } catch {
+      /* 忽略：无捕获时拖动可能中断，但不影响后续提交 */
+    }
+    textDragRef.current = {
+      startClient: { x: e.clientX, y: e.clientY },
+      start: { ...pos },
+      scale: ctm.a || 1,
+    };
+  };
+
+  const onTextHandleMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = textDragRef.current;
+    if (!d) return;
+    e.preventDefault();
+    const next: WbPoint = {
+      x: d.start.x + (e.clientX - d.startClient.x) / d.scale,
+      y: d.start.y + (e.clientY - d.startClient.y) / d.scale,
+    };
+    editingRef.current = next;
+    // 让定位 effect 重算屏幕坐标，输入框跟随移动
+    setEditing(next);
+  };
+
+  const onTextHandleUp = () => {
+    textDragRef.current = null;
+  };
+
   const toPoint = (e: React.PointerEvent): WbPoint | null => {
     const svg = svgRef.current;
     if (!svg) return null;
@@ -450,9 +535,18 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
     setTextValue('');
     if (!text) return;
     const m = currentModel();
-    const el: ShapeEl = { id: newId('text'), type: 'text', x: pos.x, y: pos.y, text, color };
+    const el: ShapeEl = {
+      id: newId('text'),
+      type: 'text',
+      x: pos.x,
+      y: pos.y,
+      text,
+      color,
+      // 缺省档位不落盘，保持旧 fence 形态
+      ...(textSize === 'm' ? {} : { size: textSize }),
+    };
     applyModel({ strokes: m.strokes, shapes: [...m.shapes, el] }, { emit: true, record: true });
-  }, [textValue, color, applyModel, currentModel]);
+  }, [textValue, textSize, color, applyModel, currentModel]);
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     // 输入层打开时，画布上的按下视为「确认并关闭」：画布的 mousedown 默认聚焦被
@@ -480,6 +574,10 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
     if (tool === 'select') {
       const hit = hitTest(p);
       setSelectedId(hit ? hit.el.id : null);
+      // 选中文字时把字号控件同步到该文字，便于直接调大小
+      if (hit?.kind === 'shape' && hit.el.type === 'text') {
+        setTextSize(toWbTextSize(hit.el.size));
+      }
       if (hit) {
         drawing.current = true;
         movedRef.current = false;
@@ -650,6 +748,10 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
   const activeColorName = hexToTlColor(activeColor);
   const activeWidthSize = widthToTlSize(selectedStroke ? selectedStroke.width : width);
   const widthDisabled = !!selectedId && !selectedStroke;
+  const selectedText = selectedShape?.type === 'text' ? selectedShape : null;
+  const activeTextSize = selectedText ? toWbTextSize(selectedText.size) : textSize;
+  /** 只有「正在输入文字」或「选中了文字」时字号才有意义 */
+  const textSizeDisabled = !editing && !selectedText;
 
   const selBox = useMemo(() => {
     const el: StrokeEl | ShapeEl | null = selectedStroke ?? selectedShape;
@@ -672,9 +774,22 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
     e.preventDefault();
   };
 
+  /**
+   * 工具栏同样不能抢焦点：否则「正在输入文字时点字号/颜色」会先触发 textarea blur
+   * 把文字提交掉、输入层消失，等于没确认就不能调整样式。
+   */
+  const onToolbarMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+  };
+
   return (
     <div className="tldraw-block tldraw-edit">
-      <div className="tldraw-toolbar" role="toolbar" aria-label={t(locale, 'wbCanvas')}>
+      <div
+        className="tldraw-toolbar"
+        role="toolbar"
+        aria-label={t(locale, 'wbCanvas')}
+        onMouseDown={onToolbarMouseDown}
+      >
         <div className="tldraw-tools">
           {TOOLS.map((x) => (
             <button
@@ -685,8 +800,9 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
               aria-pressed={tool === x.tool}
               title={`${t(locale, x.labelKey)} (${x.hotkey})`}
               onClick={() => {
+                // 切换工具前先落盘，避免已输入的文字被静默丢弃
+                commitText();
                 setTool(x.tool);
-                closeText();
               }}
             >
               <Icon name={x.icon} size={16} />
@@ -770,13 +886,34 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
             </button>
           ))}
         </div>
+        <span className="tldraw-sep" />
+        <div className="tldraw-tools" role="group" aria-label={t(locale, 'wbTextSize')}>
+          {TEXT_SIZES.map((s) => (
+            <button
+              key={s.size}
+              type="button"
+              className={`tldraw-size-btn ${activeTextSize === s.size ? 'active' : ''}`}
+              aria-label={`${t(locale, 'wbTextSize')} ${s.label}`}
+              aria-pressed={activeTextSize === s.size}
+              title={`${t(locale, 'wbTextSize')} ${s.label}`}
+              disabled={textSizeDisabled}
+              onClick={() => applyTextSize(s.size)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
         <span className="tldraw-hint">{t(locale, 'wbHint')}</span>
         <button
           type="button"
           className="tldraw-icon-btn"
           aria-label={t(locale, 'wbFull')}
           title={t(locale, 'wbFull')}
-          onClick={onRequestFull}
+          onClick={() => {
+            // 切换前先落盘，未确认的文字不会丢
+            commitText();
+            onRequestFull();
+          }}
         >
           <Icon name="board" size={16} />
         </button>
@@ -822,25 +959,46 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
           )}
         </svg>
         {editing && (
-          <textarea
-            ref={textRef}
-            className="tldraw-text-input"
-            style={{ left: textPos?.left ?? 8, top: textPos?.top ?? 8 }}
-            value={textValue}
-            onChange={(e) => setTextValue(e.target.value)}
-            onBlur={commitText}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                commitText();
-              }
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                closeText();
-              }
-            }}
-          />
+          <>
+            <div
+              className="tldraw-text-handle"
+              role="button"
+              tabIndex={-1}
+              aria-label={t(locale, 'wbTextMove')}
+              title={t(locale, 'wbTextMove')}
+              style={{ left: (textPos?.left ?? 8) - 16, top: textPos?.top ?? 8 }}
+              onPointerDown={onTextHandleDown}
+              onPointerMove={onTextHandleMove}
+              onPointerUp={onTextHandleUp}
+              onPointerCancel={onTextHandleUp}
+            >
+              <Icon name="select" size={12} />
+            </div>
+            <textarea
+              ref={textRef}
+              className="tldraw-text-input"
+              style={{
+                left: textPos?.left ?? 8,
+                top: textPos?.top ?? 8,
+                fontSize: wbTextSizeToPx(textSize),
+                height: Math.max(28, Math.round(wbTextSizeToPx(textSize) * 1.7)),
+              }}
+              value={textValue}
+              onChange={(e) => setTextValue(e.target.value)}
+              onBlur={commitText}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  commitText();
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  closeText();
+                }
+              }}
+            />
+          </>
         )}
         {empty && (
           <div className="tldraw-empty">

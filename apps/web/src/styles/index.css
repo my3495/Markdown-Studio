@@ -3982,6 +3982,51 @@ details.agent-trace > summary {
   opacity: 0.4;
   cursor: default;
 }
+/* 字号：文字工具的 S/M/L/XL 档位 */
+.tldraw-size-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 28px;
+  padding: 0 4px;
+  border: none;
+  border-radius: var(--md-radius-sm, 6px);
+  background: transparent;
+  color: var(--md-color-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+.tldraw-size-btn:hover:not(:disabled) {
+  background: var(--md-color-surface-2);
+  color: var(--md-color-fg);
+}
+.tldraw-size-btn.active {
+  color: var(--md-color-accent);
+  background: color-mix(in srgb, var(--md-color-accent) 12%, var(--md-color-surface));
+}
+.tldraw-size-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* 未确认文字的拖动柄：先定位再确认 */
+.tldraw-text-handle {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 22px;
+  border: 1px solid var(--md-color-accent);
+  border-radius: var(--md-radius-sm, 4px);
+  background: var(--md-color-surface);
+  color: var(--md-color-accent);
+  cursor: move;
+  touch-action: none;
+  z-index: 1;
+}
 .tldraw-sel {
   fill: none;
   stroke: var(--md-color-accent);

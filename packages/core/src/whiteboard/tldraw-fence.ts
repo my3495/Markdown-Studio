@@ -22,6 +22,28 @@ interface WbShapeBase {
   color: string;
 }
 
+/** 文字字号档位（与 tldraw 的 size 对齐，便于往返无损） */
+export type WbTextSize = 's' | 'm' | 'l' | 'xl';
+
+/** 字号档位 → 渲染像素（'m' 为历史默认 16px，保证旧文档观感不变） */
+export function wbTextSizeToPx(size: unknown): number {
+  switch (size) {
+    case 's':
+      return 12;
+    case 'l':
+      return 24;
+    case 'xl':
+      return 32;
+    default:
+      return 16;
+  }
+}
+
+/** 任意值 → 合法字号档位（未知回落 'm'） */
+export function toWbTextSize(size: unknown): WbTextSize {
+  return size === 's' || size === 'l' || size === 'xl' ? size : 'm';
+}
+
 export type WbShape =
   | (WbShapeBase & {
       type: 'rect';
@@ -50,6 +72,8 @@ export type WbShape =
       x: number;
       y: number;
       text: string;
+      /** 字号档位（可选）；缺省按 'm'（16px）渲染，兼容旧 fence */
+      size?: WbTextSize;
     });
 
 export interface WbDocument {
@@ -92,10 +116,14 @@ function normalizeStroke(s: WbStroke): WbStroke {
   return out;
 }
 
-/** 归一化单个形状：丢弃非法 id，其余字段原样保留 */
+/** 归一化单个形状：丢弃非法 id / 非法字号，其余字段原样保留 */
 function normalizeShape(sh: WbShape): WbShape {
   const out = { ...sh };
   if (typeof out.id !== 'string' || !out.id) delete out.id;
+  if (out.type === 'text') {
+    if (out.size === undefined) delete (out as { size?: unknown }).size;
+    else out.size = toWbTextSize(out.size);
+  }
   return out;
 }
 
