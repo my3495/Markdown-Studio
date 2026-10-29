@@ -235,6 +235,12 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
   const textRef = useRef<HTMLTextAreaElement>(null);
   /** 文字输入层的当前位置（以 ref 为准，保证提交幂等：同一会话只落一次盘） */
   const editingRef = useRef<WbPoint | null>(null);
+  /**
+   * 「连续操作」开始前的模型快照。
+   * 画笔绘制与选择拖动都会边拖边改模型（中途不记录历史），拖完才落一次盘；
+   * 若此时才用 currentModel() 当历史快照，快照里已经包含本次改动，撤销就成了空操作。
+   */
+  const historyBeforeRef = useRef<Model | null>(null);
 
   /** 关闭文字输入层；必须先清 ref，卸载引发的 blur 才不会二次提交 */
   const closeText = useCallback(() => {
@@ -251,9 +257,10 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
   );
 
   const applyModel = useCallback(
-    (m: Model, opts: { emit: boolean; record: boolean }) => {
+    (m: Model, opts: { emit: boolean; record: boolean; before?: Model }) => {
       if (opts.record) {
-        pastRef.current = [...pastRef.current, currentModel()];
+        // 默认快照「改动前」的模型；连续操作（画笔/拖动）由 before 显式提供
+        pastRef.current = [...pastRef.current, opts.before ?? currentModel()];
         if (pastRef.current.length > HISTORY_LIMIT) pastRef.current.shift();
         futureRef.current = [];
       }
@@ -583,6 +590,8 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
         movedRef.current = false;
         dragStartPt.current = p;
         dragOrigin.current = hit;
+        // 拖动过程中模型会即时改动，先存快照供松手时记历史
+        historyBeforeRef.current = currentModel();
       }
       return;
     }
@@ -594,6 +603,8 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
     }
     if (tool === 'pen') {
       drawing.current = true;
+      // 笔迹是边拖边写模型的，落笔前先存快照
+      historyBeforeRef.current = currentModel();
       const stroke: StrokeEl = { id: newId('s'), color, width, points: [p] };
       applyModel({ strokes: [...strokesRef.current, stroke], shapes: shapesRef.current }, { emit: false, record: false });
       return;
@@ -662,12 +673,24 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
     if (tool === 'select') {
       dragStartPt.current = null;
       dragOrigin.current = null;
-      if (movedRef.current) applyModel(currentModel(), { emit: true, record: true });
+      if (movedRef.current) {
+        applyModel(currentModel(), {
+          emit: true,
+          record: true,
+          before: historyBeforeRef.current ?? undefined,
+        });
+      }
+      historyBeforeRef.current = null;
       movedRef.current = false;
       return;
     }
     if (tool === 'pen') {
-      applyModel(currentModel(), { emit: true, record: true });
+      applyModel(currentModel(), {
+        emit: true,
+        record: true,
+        before: historyBeforeRef.current ?? undefined,
+      });
+      historyBeforeRef.current = null;
       return;
     }
 

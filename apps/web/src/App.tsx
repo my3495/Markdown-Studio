@@ -224,6 +224,10 @@ export function App() {
   }, []);
 
   const onPersistBoard = useCallback((idx: number, json: string) => {
+    // 编辑器向 store 的同步是 150ms 防抖的，且防抖未落定时编辑器会**丢弃**外部写入
+    // （CodeMirrorEditor 的 content effect）：先落定再写，否则白板的连续操作
+    // （画完 150ms 内再擦/清空）会被随后的防抖 emit 用旧文本整条覆盖丢失。
+    editorFlushRef.current?.();
     const st = useDocuments.getState();
     const d = st.activeId ? st.docs[st.activeId] : null;
     if (!d) return;
@@ -232,6 +236,8 @@ export function App() {
   }, []);
 
   const onEditHeading = useCallback((line: number, text: string) => {
+    // 同上：预览内联改标题也是外部写入，落定编辑器输入后再改，避免被防抖回写覆盖
+    editorFlushRef.current?.();
     const st = useDocuments.getState();
     const d = st.activeId ? st.docs[st.activeId] : null;
     if (!d) return;

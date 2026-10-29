@@ -174,6 +174,41 @@ describe('tldraw → WbDocument 往返', () => {
     expect(serializeTldrawFence(parsed)).not.toContain('huge');
   });
 
+  it('椭圆 / 箭头 / 直线 往返保持几何', () => {
+    const doc = {
+      v: 1 as const,
+      strokes: [],
+      shapes: [
+        { id: 'e1', type: 'ellipse' as const, x: 10, y: 20, w: 60, h: 30, color: '#3fa34d' },
+        { id: 'a1', type: 'arrow' as const, x1: 5, y1: 6, x2: 95, y2: 66, color: '#3b82f6' },
+      ],
+    };
+    const tl = wbToTlShapes(doc);
+    const round = tlShapesToWb(tl);
+    const shapes = round.shapes ?? [];
+    const ellipse = shapes.find((s) => s.type === 'ellipse');
+    const arrow = shapes.find((s) => s.type === 'arrow');
+    expect(ellipse).toMatchObject({ x: 10, y: 20, w: 60, h: 30 });
+    expect(arrow).toMatchObject({ x1: 5, y1: 6, x2: 95, y2: 66 });
+    expect(ellipse && 'id' in ellipse && ellipse.id).toBe('e1');
+    expect(arrow && 'id' in arrow && arrow.id).toBe('a1');
+  });
+
+  it('tldraw line 形状归并成笔迹（两点）', () => {
+    const wb = tlShapesToWb([
+      {
+        type: 'line',
+        x: 0,
+        y: 0,
+        props: { points: { a: { x: 0, y: 0, index: 'a0' }, b: { x: 20, y: 10, index: 'a1' } }, color: 'red', size: 's' },
+      },
+    ]);
+    expect(wb.strokes).toHaveLength(1);
+    expect(wb.strokes[0]!.points).toEqual([{ x: 0, y: 0 }, { x: 20, y: 10 }]);
+    expect(wb.strokes[0]!.width).toBe(1.5);
+    expect(wb.strokes[0]!.color).toBe('#e5484d');
+  });
+
   it('忽略非支持形状与脏数据（draw 脏点过滤 / 空文本）', () => {
     const wb = tlShapesToWb([
       { type: 'note', x: 0, y: 0, props: {} }, // 便签：暂不持久化

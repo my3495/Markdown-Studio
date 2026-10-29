@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  countTldrawFences,
   ensureIds,
   parseTldrawFence,
   replaceTldrawFence,
@@ -96,6 +97,46 @@ describe('tldraw fence', () => {
     expect((ensured.shapes ?? [])[0]!.id).toBe('rect0');
     // 幂等：已有 id 不再变更
     expect(ensureIds(ensured)).toEqual(ensured);
+  });
+
+  it('笔迹归一化：缺色/缺宽回落默认值，脏点被过滤', () => {
+    const doc = parseTldrawFence(
+      JSON.stringify({
+        v: 1,
+        strokes: [
+          { points: [{ x: 1, y: 2 }, { x: 'x', y: 3 }, null, { x: 4, y: 5 }] },
+          { color: '#abc', width: 3, points: [{ x: 0, y: 0 }] },
+        ],
+        shapes: [],
+      })
+    );
+    expect(doc.strokes).toHaveLength(2);
+    // 未提供 color/width → 默认黑 + 2px
+    expect(doc.strokes[0]).toMatchObject({ color: '#334155', width: 2 });
+    expect(doc.strokes[0]!.points).toEqual([{ x: 1, y: 2 }, { x: 4, y: 5 }]);
+    expect(doc.strokes[1]).toMatchObject({ color: '#abc', width: 3 });
+  });
+
+  it('多围栏：按序号替换，且只动目标围栏', () => {
+    const md = [
+      '# T',
+      '',
+      '```tldraw',
+      '{"v":1,"strokes":[]}',
+      '```',
+      '',
+      '```whiteboard',
+      '{"v":1,"strokes":[]}',
+      '```',
+    ].join('\n');
+    expect(countTldrawFences(md)).toBe(2);
+    const next = replaceTldrawFence(md, 1, '{"v":1,"strokes":[],"shapes":[]}');
+    const fences = [...next.matchAll(/```(?:tldraw|whiteboard)[^\n]*\n([\s\S]*?)```/g)].map((m) =>
+      m[1]!.trim()
+    );
+    expect(fences).toHaveLength(2);
+    expect(fences[0]).toBe('{"v":1,"strokes":[]}');
+    expect(fences[1]).toBe('{"v":1,"strokes":[],"shapes":[]}');
   });
 
   it('旧无 id fence 往返后值不变且不新增 id 字段', () => {
