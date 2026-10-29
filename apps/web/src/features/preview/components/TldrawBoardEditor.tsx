@@ -212,6 +212,15 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
   const svgRef = useRef<SVGSVGElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
+  /** 文字输入层的当前位置（以 ref 为准，保证提交幂等：同一会话只落一次盘） */
+  const editingRef = useRef<WbPoint | null>(null);
+
+  /** 关闭文字输入层；必须先清 ref，卸载引发的 blur 才不会二次提交 */
+  const closeText = useCallback(() => {
+    editingRef.current = null;
+    setEditing(null);
+    setTextValue('');
+  }, []);
 
   const sig = useMemo(() => serializeTldrawFence(ensureIds(doc)), [doc]);
 
@@ -258,8 +267,8 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
     setCanRedo(false);
     setSelectedId(null);
     setDraft(null);
-    setEditing(null);
-  }, [sig, doc]);
+    closeText();
+  }, [sig, doc, closeText]);
 
   // 文字叠层定位：editing 变化后测量实际屏幕位置并聚焦（避免在渲染期读 ref）
   useEffect(() => {
@@ -430,18 +439,29 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
   };
 
   const commitText = useCallback(() => {
-    const pos = editing;
+    // 以 ref 作为「是否还有未提交的输入」的唯一依据：
+    // 关闭输入层会让 textarea 卸载，可能再触发一次 blur（onBlur→commitText），
+    // 若不先清 ref 就会把同一段文字提交成两个形状。
+    const pos = editingRef.current;
+    if (!pos) return;
+    editingRef.current = null;
     const text = textValue.trim();
     setEditing(null);
     setTextValue('');
-    if (!pos || !text) return;
+    if (!text) return;
     const m = currentModel();
     const el: ShapeEl = { id: newId('text'), type: 'text', x: pos.x, y: pos.y, text, color };
     applyModel({ strokes: m.strokes, shapes: [...m.shapes, el] }, { emit: true, record: true });
-  }, [editing, textValue, color, applyModel, currentModel]);
+  }, [textValue, color, applyModel, currentModel]);
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (editing) return;
+    // 输入层打开时，画布上的按下视为「确认并关闭」：画布的 mousedown 默认聚焦被
+    // 阻止后不会再产生 blur，必须在这里显式提交，否则文字会一直悬在输入框里。
+    if (editing) {
+      commitText();
+      wrapRef.current?.focus();
+      return;
+    }
     const p = toPoint(e);
     if (!p) return;
     wrapRef.current?.focus();
@@ -469,6 +489,7 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
       return;
     }
     if (tool === 'text') {
+      editingRef.current = p;
       setEditing(p);
       setTextValue('');
       return;
@@ -610,8 +631,7 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
     }
     if (e.key === 'Escape') {
       cancelDrag();
-      setEditing(null);
-      setTextValue('');
+      closeText();
       setSelectedId(null);
       return;
     }
@@ -619,7 +639,7 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
       const next = HOTKEYS[k];
       if (next) {
         setTool(next);
-        setEditing(null);
+        closeText();
       }
     }
   };
@@ -640,6 +660,18 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
 
   const empty = strokes.length === 0 && shapes.length === 0 && !draft;
 
+  /**
+   * 文字工具落笔时，浏览器 mousedown 的默认行为会把焦点移到可聚焦的画布容器
+   * （tabIndex=0），于是刚挂载的 textarea 立刻被 blur → onBlur 提交空文本并
+   * setEditing(null)，表现为「选了文字工具，点画布却无法输入」。
+   * 阻止默认聚焦即可保住 textarea 的焦点；点击 textarea 自身时不能拦，
+   * 否则无法移动光标。
+   */
+  const onCanvasMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('.tldraw-text-input')) return;
+    e.preventDefault();
+  };
+
   return (
     <div className="tldraw-block tldraw-edit">
       <div className="tldraw-toolbar" role="toolbar" aria-label={t(locale, 'wbCanvas')}>
@@ -654,7 +686,7 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
               title={`${t(locale, x.labelKey)} (${x.hotkey})`}
               onClick={() => {
                 setTool(x.tool);
-                setEditing(null);
+                closeText();
               }}
             >
               <Icon name={x.icon} size={16} />
@@ -756,6 +788,7 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
         role="application"
         aria-label={t(locale, 'wbCanvas')}
         onKeyDown={onKeyDown}
+        onMouseDown={onCanvasMouseDown}
       >
         <svg
           ref={svgRef}
@@ -804,8 +837,7 @@ export default function TldrawBoardEditor({ doc, onChange, onRequestFull }: Prop
               }
               if (e.key === 'Escape') {
                 e.preventDefault();
-                setEditing(null);
-                setTextValue('');
+                closeText();
               }
             }}
           />
