@@ -8,6 +8,8 @@
  * 同一套 UI（设置面板「关于与更新」分区）复用于 Web 与桌面。
  */
 
+import { APP_VERSION } from '../version';
+
 /** 更新包元信息（对齐 tauri-plugin-updater 的 Update 字段） */
 export interface UpdateInfo {
   /** 目标版本号，如 "1.1.0" */
@@ -32,10 +34,13 @@ export interface UpdateBackend {
   downloadAndInstall(onProgress: (percent: number) => void): Promise<void>;
 }
 
-/** 默认（Web）后端：不可用 */
+/**
+ * 默认（Web）后端：不支持自更新（浏览器里无法替换安装包），
+ * 但版本号必须真实 —— 此前硬编码 '0.0.0'，网页端「关于与更新」永远显示 0.0.0。
+ */
 const unavailableBackend: UpdateBackend = {
   available: () => false,
-  currentVersion: async () => '0.0.0',
+  currentVersion: async () => APP_VERSION,
   check: async () => null,
   downloadAndInstall: async () => {
     throw new Error('当前环境不支持自动更新');

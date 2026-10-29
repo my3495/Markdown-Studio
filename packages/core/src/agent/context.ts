@@ -95,7 +95,7 @@ export function composeWithBudget(parts: BudgetPart[], opts: ComposeWithBudgetOp
   const join = (xs: { name: string; text: string }[]) =>
     xs.map((x) => header(x.name, x.text)).join(separator);
 
-  let texts = fitted.map((f) => f.text);
+  const texts = fitted.map((f) => f.text);
   let result = join(fitted);
   if (result.length <= cap) {
     return {

@@ -261,7 +261,8 @@ export async function chatWithTools(
     // 网关返回 200 + HTML 错误页时，原始 SyntaxError 没有任何上下文
     const detail = e instanceof Error ? e.message : String(e);
     throw new Error(
-      `chat failed status=${res.status ?? '?'} 响应 JSON 解析失败：${detail.slice(0, 160)}`
+      `chat failed status=${res.status ?? '?'} 响应 JSON 解析失败：${detail.slice(0, 160)}`,
+      { cause: e }
     );
   }
   return parseToolsResponse(json, cfg.provider, cfg.baseUrl);
@@ -302,7 +303,7 @@ export async function* streamChatWithTools(
   const isOllamaOpenAi = kind === 'ollama' && endpointKind === 'openai-compat';
   let content = '';
   const toolAcc = new Map<number, { id: string; name: string; args: string }>();
-  let anthropicTools: ToolCall[] = [];
+  const anthropicTools: ToolCall[] = [];
   /**
    * Anthropic 多 tool_use 块按 index 并行累积，避免单变量被新块覆盖丢 delta。
    * 部分代理会交错 block_start / block_stop，用 Map<index, ...> 更稳。

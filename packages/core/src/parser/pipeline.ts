@@ -272,6 +272,9 @@ let parseCache: ParseCache | null = null;
  */
 const HAS_REF_DEF = /^ {0,3}\[[^\]\n]+\]:/m;
 
+/** 文档以 frontmatter 栅栏开头（`---` / `+++`）：状态与「文档开头」绑定，不复用缓存块 */
+const FRONTMATTER_FENCE = /^(?:---|\+\+\+)[ \t]*(?:\r?\n|$)/;
+
 /**
  * 保守回退的块数：切点前的最后一块也要重新解析。
  * 覆盖「追加会改变上一块」的常见情形——表格续行、列表续项、引用块续写、
@@ -285,16 +288,42 @@ function countNewlines(text: string, upTo: number): number {
   return n;
 }
 
-/** 把子树里所有 position 平移到全文坐标系（行号与字符偏移） */
-function shiftPositions(nodes: any[], offsetDelta: number, lineDelta: number): void {
-  if (offsetDelta === 0 && lineDelta === 0) return;
+/**
+ * 把子树里所有 position 平移到全文坐标系（行号、字符偏移、首行列号）。
+ *
+ * 列号只对**切片第一行**上的节点平移：`source.slice(boundary)` 让切点落在列 1，
+ * 而它在全文里的真实列是 `boundaryColumn`。若像原来那样只加 offset/line，
+ * 以缩进开头、又被切到尾部重解析的块（如 `  - 项`）会保留「列 1」，
+ * 与全量解析的列 3 不一致 —— CJK 排版 lint 正是用 position.column 定位下划线，
+ * 于是正文里的排版提示会比实际字符偏左。后续行不需要平移：它们各自从行首起算。
+ */
+function shiftPositions(
+  nodes: any[],
+  offsetDelta: number,
+  lineDelta: number,
+  columnDelta = 0
+): void {
+  if (offsetDelta === 0 && lineDelta === 0 && columnDelta === 0) return;
   for (const node of nodes) {
     const p = node?.position;
-    if (p?.start && typeof p.start.offset === 'number') p.start.offset += offsetDelta;
-    if (p?.start && typeof p.start.line === 'number') p.start.line += lineDelta;
-    if (p?.end && typeof p.end.offset === 'number') p.end.offset += offsetDelta;
-    if (p?.end && typeof p.end.line === 'number') p.end.line += lineDelta;
-    if (Array.isArray(node?.children)) shiftPositions(node.children, offsetDelta, lineDelta);
+    // 判断「是否为切片第一行」必须用平移前的行号，因此先处理列、再改行
+    if (p?.start) {
+      if (columnDelta !== 0 && p.start.line === 1 && typeof p.start.column === 'number') {
+        p.start.column += columnDelta;
+      }
+      if (typeof p.start.offset === 'number') p.start.offset += offsetDelta;
+      if (typeof p.start.line === 'number') p.start.line += lineDelta;
+    }
+    if (p?.end) {
+      if (columnDelta !== 0 && p.end.line === 1 && typeof p.end.column === 'number') {
+        p.end.column += columnDelta;
+      }
+      if (typeof p.end.offset === 'number') p.end.offset += offsetDelta;
+      if (typeof p.end.line === 'number') p.end.line += lineDelta;
+    }
+    if (Array.isArray(node?.children)) {
+      shiftPositions(node.children, offsetDelta, lineDelta, columnDelta);
+    }
   }
 }
 
@@ -306,15 +335,40 @@ function snapshot(nodes: any[]): any[] {
 }
 
 /**
+ * 切点是否「干净」：只有落在**空行之后**（或文件开头）才是可安全复用的边界。
+ *
+ * 块的含义会依赖前文状态，而切片解析拿不到前文。已复现的反例：
+ * - 文档以未闭合的 `---`（frontmatter 起始栅栏）开头时，其后的 `  - 项`
+ *   在全量解析里是段落，单独解析却是列表 —— 同一行两种结构；
+ * - 引用/列表项的惰性续行同理（`> 引用` 后紧跟 `  - 项`）。
+ * 空行之后容器栈与段落状态都已重置，切片解析才与全量解析等价。
+ */
+function isCleanBoundary(source: string, offset: number): boolean {
+  // 切点所在行不能是 frontmatter 栅栏：切片后它成了「文档首行」，
+  // 会把 frontmatter 状态带进后续解析（同一段缩进内容在全文里是段落，切片里变列表）。
+  const eol = source.indexOf('\n', offset);
+  const line = source.slice(offset, eol === -1 ? source.length : eol).trimEnd();
+  if (line === '---' || line === '+++') return false;
+
+  if (offset === 0) return true;
+  const prevNl = source.lastIndexOf('\n', offset - 1);
+  return source.slice(prevNl + 1, offset).trim() === '';
+}
+
+/**
  * 尝试增量解析。任何不确定的情形都返回 null（调用方回退全量）。
  *
  * 切点必须落在**行首**，否则尾部文本会和上一行拼在一起被解析成别的东西。
- * 块级节点的 `position.start` 天然在行首，因此直接用它当切点。
+ * 块级节点的 `position.start` 天然在行首，因此直接用它当切点；
+ * 此外切点还必须位于空行之后（见 isCleanBoundary）。
  */
 function incrementalParse(processor: any, source: string, key: string): any[] | null {
   const cache = parseCache;
   if (!cache || cache.key !== key) return null;
   if (HAS_REF_DEF.test(source)) return null;
+  // 以 `---` 开头的工作区文档会进入 frontmatter 栅栏状态：该状态是「文档开头」才有，
+  // 切片解析无法复现（同一行 `  - 项` 全文解析成段落、切片解析成列表），直接全量。
+  if (FRONTMATTER_FENCE.test(source) || FRONTMATTER_FENCE.test(cache.source)) return null;
 
   const prev = cache.source;
   const max = Math.min(prev.length, source.length);
@@ -333,7 +387,13 @@ function incrementalParse(processor: any, source: string, key: string): any[] | 
     }
   }
 
+  // 先按「保守回退」退一块，再继续往回退到最近的空行边界；退不到就整篇全量
   let reuse = firstTouched - RECEDE_BLOCKS;
+  while (reuse > 0) {
+    const start = children[reuse]?.position?.start?.offset;
+    if (typeof start === 'number' && isCleanBoundary(source, start)) break;
+    reuse--;
+  }
   if (reuse <= 0) return null;
 
   const boundary = children[reuse]?.position?.start?.offset;
@@ -341,7 +401,9 @@ function incrementalParse(processor: any, source: string, key: string): any[] | 
 
   const tail = processor.parse(source.slice(boundary));
   const lineDelta = countNewlines(source, boundary);
-  shiftPositions(tail.children, boundary, lineDelta);
+  // 切点在全文中的 0-based 列号（切片后该位置对应列 1）
+  const boundaryColumn = boundary - (source.lastIndexOf('\n', boundary - 1) + 1);
+  shiftPositions(tail.children, boundary, lineDelta, boundaryColumn);
   return [...children.slice(0, reuse), ...tail.children];
 }
 

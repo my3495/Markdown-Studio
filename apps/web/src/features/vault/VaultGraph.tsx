@@ -21,18 +21,27 @@ export function VaultGraph({ variant = 'side' }: Props) {
   const { locale } = useSettings();
   const activeId = docs.activeId;
 
+  // `vault` 是 create() 里 new 出来一次的稳定实例，身份永不变化；真正会随笔记增删改
+  // 变化的是 `graph` / `notes`。它们虽未被函数体直接读取，却是**缓存失效键**：
+  // 去掉就等于把反向链接/出链永久冻结在首次计算结果上。
   const backlinks = useMemo(
     () => (activeId ? vault.backlinks(activeId) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [activeId, vault, graph]
   );
   const outgoing = useMemo(
     () => (activeId ? vault.outgoingLinks(activeId) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [activeId, vault, graph]
   );
-  const typedLinks = useMemo(() => {
-    const n = activeId ? vault.get(activeId) : null;
-    return n ? typedOutgoing(n) : [];
-  }, [activeId, vault, notes]);
+  const typedLinks = useMemo(
+    () => {
+      const n = activeId ? vault.get(activeId) : null;
+      return n ? typedOutgoing(n) : [];
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeId, vault, notes]
+  );
 
   const openById = (id: string) => {
     if (persisted) openByPath(id);

@@ -181,4 +181,95 @@ describe('增量解析等价性', () => {
     };
     expect(lines(inc.hast)).toEqual(lines(full.hast));
   });
+
+  it('尾部块以缩进开头时列号不漂移（position.column 与全量一致）', async () => {
+    // 切片从块起点（`-` 所在列）切开，原实现只平移 offset/line，
+    // 缩进块的列号会从 3 掉到 1，而排版 lint 正是用 column 定位下划线。
+    const before = '前言段落。\n\n```\n空块\n```\n';
+    const after = `${before}\n  - 缩进列表\n`;
+    await render(before, {});
+    const inc = await render(after, {});
+    expect(__parseStats.lastIncremental).toBe(true);
+    __clearParseCache();
+    const full = await render(after, {});
+
+    const columns = (hast: any): number[] => {
+      const out: number[] = [];
+      const walk = (n: any) => {
+        if (typeof n?.position?.start?.column === 'number') out.push(n.position.start.column);
+        if (Array.isArray(n?.children)) n.children.forEach(walk);
+      };
+      walk(hast);
+      return out;
+    };
+    expect(columns(inc.hast)).toEqual(columns(full.hast));
+    expect(JSON.stringify(inc.hast)).toBe(JSON.stringify(full.hast));
+  });
+
+  it('文档以 `---` 开头时禁用增量（frontmatter 状态无法用切片复现）', async () => {
+    // 复现：`---`（未闭合栅栏）开头时，其后 `  - 项` 在全文里是段落、单独解析却是列表
+    const before = '---\n\n## 标题\n\n正文。\n';
+    await render(before, {});
+    const after = `${before}\n  - 项\n`;
+    const r = await render(after, {});
+    expect(__parseStats.lastIncremental).toBe(false);
+
+    __clearParseCache();
+    const full = await render(after, {});
+    expect(JSON.stringify(r.hast)).toBe(JSON.stringify(full.hast));
+  });
+
+  it('切点落在 `---` 行时不得把它当作文档首行解析', async () => {
+    // 切片以 `---` 开头会重新激活 frontmatter 状态，使后续缩进内容解析成段落
+    const before = '```js\nconst a = 1;\n```\n\n**粗**\n\n- 项一\n   缩进\n';
+    const after = `${before}---\n- 项二\n  - 子项\n`;
+    await render(before, {});
+    const inc = await render(after, {});
+    __clearParseCache();
+    const full = await render(after, {});
+    expect(JSON.stringify(inc.hast)).toBe(JSON.stringify(full.hast));
+  });
+
+  it('逐块输入 8 篇文档（确定性伪随机）：逐步等价于全量解析', async () => {
+    const CHUNKS = [
+      '# 标题一\n',
+      '- 列表项\n',
+      '- 第二项\n  - 嵌套项\n',
+      '1. 有序一\n',
+      '> 引用\n',
+      '```js\nconst a = 1;\n```\n',
+      '| a | b |\n| --- | --- |\n| 1 | 2 |\n',
+      '**粗** ==高亮==\n',
+      '[[双链]]\n',
+      '---\n',
+      '  - 缩进列表\n',
+      '   缩进代码\n',
+    ];
+    const rand = (seed: number) => {
+      let a = seed >>> 0;
+      return () => {
+        a = (a + 0x6d2b79f5) >>> 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    };
+
+    let incrementalHits = 0;
+    for (let seed = 1; seed <= 8; seed++) {
+      const next = rand(seed);
+      __clearParseCache();
+      let doc = '';
+      for (let step = 0; step < 8; step++) {
+        doc += CHUNKS[Math.floor(next() * CHUNKS.length)];
+        const inc = await render(doc, {});
+        if (__parseStats.lastIncremental) incrementalHits++;
+        __clearParseCache();
+        const full = await render(doc, {});
+        expect(JSON.stringify(inc.hast)).toBe(JSON.stringify(full.hast));
+      }
+    }
+    // 防止「全量兜底」让上面的一致性断言变成空转
+    expect(incrementalHits).toBeGreaterThan(20);
+  });
 });

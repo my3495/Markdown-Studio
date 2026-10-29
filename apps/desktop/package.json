@@ -5,7 +5,10 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "sync:version": "node ../web/scripts/sync-version.mjs",
+    "predev": "node ../web/scripts/sync-version.mjs",
     "dev": "vite",
+    "prebuild": "node ../web/scripts/sync-version.mjs",
     "build": "vite build",
     "tauri": "tauri",
     "build:desktop": "pnpm build && tauri build --no-bundle",

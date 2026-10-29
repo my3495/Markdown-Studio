@@ -17,7 +17,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 const React: any = require('react');
 
 export default React;

@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useUi } from '../../stores/ui';
 import { useSettings } from '../../stores/settings';
-import { useVault } from '../../stores/vault';
-import { useDocuments } from '../../stores/document';
 import { Icon } from '../../components/Icon';
 import { t } from '../../i18n';
 import {
@@ -27,18 +25,15 @@ export function CommandPalette({ onSlides }: Props) {
   const open = useUi((s) => s.paletteOpen);
   const closePalette = useUi((s) => s.closePalette);
   const locale = useSettings((s) => s.locale);
-  const notes = useVault((s) => s.notes);
-  const docOrder = useDocuments((s) => s.order);
 
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const all = useMemo(
-    () => buildCommands({ locale, onSlides }),
-    [locale, onSlides, notes, docOrder]
-  );
+  // 命令列表只由 locale / onSlides 决定。早期这里还订阅了 notes / docOrder 并列为依赖，
+  // 但它们从未参与 buildCommands：只会让每次编辑都重建整张命令表，并让本组件随之重渲染。
+  const all = useMemo(() => buildCommands({ locale, onSlides }), [locale, onSlides]);
   const filtered = useMemo(() => {
     const list = filterCommands(all, query);
     return [...list].sort((a, b) => groupOrder(a.group) - groupOrder(b.group));

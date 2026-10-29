@@ -51,11 +51,27 @@ export function scanArtifacts(dir) {
   for (const { target, re, prefer } of ARTIFACT_PATTERNS) {
     const candidates = files.filter((f) => re.test(f));
     if (candidates.length === 0) continue;
-    // 优先含 setup/版本号的文件；否则取第一个
-    const chosen =
-      candidates.find((f) => prefer && prefer.test(f)) ??
-      candidates.find((f) => parseVersionFromName(f)) ??
-      candidates[0];
+    /**
+     * `release/` 是累积目录，多版本安装包会同时存在（1.0.0 + 1.0.1）。
+     * 这里必须按版本号从高到低挑：早期实现用 `find` 取第一个候选，
+     * readdir 顺序恰好让旧版排前面，导致最新版发布后清单仍指向旧包
+     * （用户点「检查更新」看不到新版本，且下载到的是旧安装包）。
+     */
+    const ranked = [...candidates].sort((a, b) => {
+      const va = parseVersionFromName(a);
+      const vb = parseVersionFromName(b);
+      if (va && vb) {
+        const d = compareVersions(vb, va);
+        if (d !== 0) return d;
+      } else if (va !== vb) {
+        return va ? -1 : 1; // 能解析出版本的优先
+      }
+      // 版本相同（或都解析不出）时，含 setup 的安装器优先
+      const pa = prefer?.test(a) ? 1 : 0;
+      const pb = prefer?.test(b) ? 1 : 0;
+      return pb - pa;
+    });
+    const chosen = ranked[0];
     const version = parseVersionFromName(chosen);
     if (version) found.set(target, { file: chosen, version });
   }

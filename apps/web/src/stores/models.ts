@@ -216,7 +216,8 @@ export const useModels = create<ModelsState>((set) => ({
 
     const def = resolveProvider(provider);
     const base = baseUrl || def.baseUrl;
-    let result: ModelListResult = { models: [] };
+    // 下面 if/else 链已穷尽所有 provider，初始值永远不会被读到，故不初始化
+    let result: ModelListResult;
 
     if (provider === 'claude') {
       // Anthropic 无公开模型列表 API，使用预定义列表

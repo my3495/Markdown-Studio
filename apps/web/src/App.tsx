@@ -242,6 +242,8 @@ export function App() {
   const editorViewRef = useRef<EditorView | null>(null);
   /** 视图的「状态化」副本：ref.current 赋值不触发重渲染，状态栏/导出等需要感知就绪 */
   const [editorView, setEditorView] = useState<EditorView | null>(null);
+  /** 编辑器「立即同步到 store」句柄：输入防抖 150ms，保存前必须先 flush */
+  const editorFlushRef = useRef<(() => void) | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const syncRef = useRef<ScrollSync | null>(null);
   const mainRef = useRef<HTMLDivElement | null>(null);
@@ -560,6 +562,9 @@ export function App() {
   // 保存当前文档：快捷键与状态栏共用同一条路径（含快照与 on-save recipes）。
   // 用 getState 读取，避免把整份 store 挂进依赖导致回调频繁重建。
   const saveActive = useCallback(() => {
+    // 先把编辑器里尚未防抖同步的输入 flush 进 store：
+    // 否则「打完字立刻 Ctrl+S」会读到 150ms 前的旧文本，导出的文件缺最后几个字。
+    editorFlushRef.current?.();
     const st = useDocuments.getState();
     const doc = st.activeId ? st.docs[st.activeId] : null;
     if (!doc) return;
@@ -630,10 +635,12 @@ export function App() {
           ? view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to)
           : '';
         // 与工具栏「分享卡片」同一条路径与同一兜底策略
-        void exportShareCard(sel || doc.content.slice(0, 200), doc.name);
+        void exportShareCard(sel || doc.content.slice(0, 200), doc.name).then((ok) => {
+          if (!ok) toast(t(useSettings.getState().locale, 'shareCardFailed'), { tone: 'danger' });
+        });
       },
     }),
-    [active, activeId, docs, s, vault, togglePalette, saveActive]
+    [activeId, docs, s, vault, togglePalette, saveActive]
   );
   useShortcuts(shortcutHandlers);
 
@@ -816,6 +823,7 @@ export function App() {
                 content={active.content}
                 onChange={(c) => docs.updateContent(active.id, c)}
                 editorRef={editorViewRef}
+                flushRef={editorFlushRef}
                 onReady={setEditorView}
               />
             ) : (

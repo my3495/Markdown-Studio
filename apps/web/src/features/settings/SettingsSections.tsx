@@ -19,6 +19,9 @@ import {
   FONT_FAMILY_PRESETS,
   FONT_FAMILY_TOKEN,
   getThemeVariables,
+  parseTokenValue,
+  serializeTokenValue,
+  type ThemeTokenDef,
   type TypographyOptions,
 } from '@md-studio/core';
 import { resolveTheme } from '../../platform/theme';
@@ -31,6 +34,38 @@ import {
   loadedAffRuleCount,
   loadPersonalDict,
 } from '../../platform/spell/personalDict';
+
+/**
+ * 开关控件（role=switch）。
+ *
+ * 与 checkbox 的区别在语义：开关表示「立即生效的二元状态」，点一下即改；
+ * 设置面板里这类项用开关，比一排勾选框更容易扫读。
+ */
+function SettingsSwitch({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="ui-field ui-field-switch">
+      <span>{label}</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        className={`ui-switch${checked ? ' on' : ''}`}
+        onClick={() => onChange(!checked)}
+      >
+        <i className="ui-switch-knob" />
+      </button>
+    </div>
+  );
+}
 
 /* ───────────────────────── 中文排版 ───────────────────────── */
 
@@ -145,8 +180,93 @@ function FontFamilyField({
   );
 }
 
+/**
+ * 数值令牌控件：下拉选择框。
+ *
+ * 取代早期的自由文本框（要用户手写 `16px` / `1.75`）：选项自带单位、只给合法档位，
+ * 于是「漏写 px」「行高误带 px」「填 2000px」在界面上根本选不出来，也就不需要
+ * 校验提示、失焦回滚这些补丁。首项固定是「跟随主题（当前 xx）」，选它即恢复默认。
+ *
+ * 历史数据或外部导入的值可能不在档位里：此时把它作为额外选项插在原值位置，
+ * 否则 select 会显示空白 —— 看起来像「设置丢了」。
+ */
+function TokenSelectField({
+  def,
+  locale,
+  raw,
+  fallback,
+  onChange,
+}: {
+  def: ThemeTokenDef;
+  locale: Locale;
+  /** store 里的自定义值；空串 = 跟随主题 */
+  raw: string;
+  /** 当前主题的默认值（未自定义时在首项里显示真实值） */
+  fallback: string;
+  onChange: (v: string) => void;
+}) {
+  const spec = def.input!;
+  const label = t(locale, def.labelKey);
+  const options = useMemo(() => {
+    const list = (spec.presets ?? []).map((n) => serializeTokenValue(def.key, n));
+    return raw && !list.includes(raw) ? [...list, raw] : list;
+  }, [def.key, raw, spec]);
+
+  return (
+    <div className="ui-field">
+      <span>{label}</span>
+      <select
+        className="ui-select ui-select-token"
+        value={raw}
+        aria-label={label}
+        title={raw || fallback}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">{t(locale, 'themeTokenFollowing').replace('{value}', fallback)}</option>
+        {options.map((value) => (
+          <option key={value} value={value}>
+            {value}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 /** 合法的十六进制颜色；非法值（含空）一律回退到主题默认色 */
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+/**
+ * 主题模式三段控件（浅色 / 深色 / 跟随系统）。
+ *
+ * 明暗模式在语义上属于「主题与配色」，从工具栏「更多」菜单里把入口提到这里；
+ * 工具栏那个下拉仍保留，作为随手切换的快捷方式，两处共用同一个 store 状态。
+ */
+function ThemeModePicker({ locale }: { locale: Locale }) {
+  const theme = useSettings((st) => st.theme);
+  const setTheme = useSettings((st) => st.setTheme);
+  const modes = [
+    { id: 'light' as const, labelKey: 'light' },
+    { id: 'dark' as const, labelKey: 'dark' },
+    { id: 'system' as const, labelKey: 'system' },
+  ];
+
+  return (
+    <div className="theme-mode" role="group" aria-label={t(locale, 'theme')}>
+      {modes.map((mode) => (
+        <button
+          key={mode.id}
+          type="button"
+          className={`theme-mode-item${theme === mode.id ? ' active' : ''}`}
+          aria-pressed={theme === mode.id}
+          onClick={() => setTheme(mode.id)}
+        >
+          {t(locale, mode.labelKey)}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function ThemeSection() {
   const s = useSettings();
@@ -160,6 +280,11 @@ export function ThemeSection() {
 
   return (
     <div className="settings-card">
+      {/* 明暗模式在最前：它是「主题」的第一层选择，配色与排版都在其之下 */}
+      <div className="ui-field">
+        <span>{t(locale, 'theme')}</span>
+        <ThemeModePicker locale={locale} />
+      </div>
       {CUSTOM_THEME_TOKENS.map((tok) => {
         if (tok.key === FONT_FAMILY_TOKEN) {
           return (
@@ -172,6 +297,18 @@ export function ThemeSection() {
           );
         }
         const label = t(locale, tok.labelKey);
+        if (tok.input) {
+          return (
+            <TokenSelectField
+              key={tok.key}
+              def={tok}
+              locale={locale}
+              raw={s.customVars[tok.key] ?? ''}
+              fallback={themeTokens[tok.key] ?? tok.placeholder ?? ''}
+              onChange={(v) => s.setCustomVar(tok.key, v)}
+            />
+          );
+        }
         return (
           <div key={tok.key} className="ui-field">
             <span>{label}</span>
@@ -202,9 +339,42 @@ export function ThemeSection() {
           </div>
         );
       })}
+      {/* 实时小样：改令牌时不必切回主区才知道效果（字号/行高/圆角/内容宽度比例） */}
+      <ThemeTokenPreview locale={locale} customVars={s.customVars} themeTokens={themeTokens} />
       <button type="button" className="ui-btn" onClick={() => s.clearCustomVars()}>
         {t(locale, 'resetTheme')}
       </button>
+    </div>
+  );
+}
+
+/** 设置面板内的排版小样（本身不接收交互，只反映当前令牌） */
+function ThemeTokenPreview({
+  locale,
+  customVars,
+  themeTokens,
+}: {
+  locale: Locale;
+  customVars: Record<string, string>;
+  themeTokens: Record<string, string>;
+}) {
+  // 内容宽度在面板里放不下真实像素，用相对比例条示意（560–1200px → 47%–100%）
+  const widthRaw = customVars['--md-max-width'] ?? themeTokens['--md-max-width'] ?? '780px';
+  const widthParsed = parseTokenValue('--md-max-width', widthRaw);
+  const widthNum = widthParsed.ok && Number.isFinite(widthParsed.number) ? widthParsed.number : 780;
+  const widthPct = Math.min(100, Math.max(40, Math.round((widthNum / 1200) * 100)));
+
+  return (
+    <div className="token-preview">
+      <div className="token-preview-head">
+        <span>{t(locale, 'themePreviewTitle')}</span>
+        <span className="token-preview-measure">{`${widthNum}px`}</span>
+      </div>
+      <p className="token-preview-body">{t(locale, 'themePreviewBody')}</p>
+      <div className="token-preview-ruler" aria-hidden="true">
+        <i style={{ width: `${widthPct}%` }} />
+      </div>
+      <div className="token-preview-code">{t(locale, 'themePreviewCard')}</div>
     </div>
   );
 }
@@ -218,6 +388,12 @@ export function EditorSection() {
 
   return (
     <div className="settings-card">
+      {/* 行号在最前：它决定编辑区首屏观感，是最常被翻找的一项 */}
+      <SettingsSwitch
+        checked={s.showLineNumbers}
+        label={t(locale, 'showLineNumbers')}
+        onChange={(v) => s.setShowLineNumbers(v)}
+      />
       <label className="ui-check">
         <input
           type="checkbox"
@@ -364,6 +540,9 @@ export function AgentSection() {
     } else {
       void modelStore.fetch(s.agent.provider, s.agent.apiKey);
     }
+    // 依赖只取 fetch 方法本身：`modelStore` 是每次 set 都换引用的状态快照，
+    // 整体入依赖会让「拉取 → 写入 models → 引用变化 → 再拉取」形成请求风暴。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.agent.provider, s.agent.apiKey, checkOllama, modelStore.fetch]);
 
   const connDotCls =

@@ -184,7 +184,7 @@ export function poly1305(key: Uint8Array, msg: Uint8Array): Uint8Array {
   for (let off = 0; off < msg.length; off += 16) {
     const block = msg.subarray(off, Math.min(off + 16, msg.length));
     // n = int_le(block) + 2^(8*len)
-    let n = leBytesToBigInt(block) | (1n << BigInt(8 * block.length));
+    const n = leBytesToBigInt(block) | (1n << BigInt(8 * block.length));
     a = ((a + n) * r) % P1305;
   }
   return bigIntToLe16(a + s);

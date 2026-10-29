@@ -40,3 +40,6 @@ Markdown-Studio-*.md
 _llm_*
 _extract.cjs
 
+# === 本机自动化探查脚本与产物（正式用例在 apps/web/e2e） ===
+.tmp-e2e/
+

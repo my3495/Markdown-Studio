@@ -155,7 +155,7 @@ async function waitForAssistantMessage(page: Page, timeout = 60_000): Promise<st
     '[data-message-role="assistant"]',
     '.message.assistant',
   ];
-  let lastText = '';
+  const lastText = '';
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     for (const sel of selectors) {

@@ -338,7 +338,7 @@ describe('format matrix (render pipeline)', () => {
     const failed = checks.filter((c) => !c.ok);
     for (const c of checks) {
       // 打印每项结果，便于定位
-      // eslint-disable-next-line no-console
+       
       console.log(`${c.ok ? 'PASS' : 'FAIL'} ${c.id} ${c.name} :: ${c.detail}`);
     }
     expect(failed.length, 'FAILED: ' + failed.map((f) => `${f.id}(${f.name})`).join(', ')).toBe(0);

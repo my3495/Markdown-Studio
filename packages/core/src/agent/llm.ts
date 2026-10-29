@@ -200,7 +200,6 @@ export function normalizeHistory(
     } else {
       if (remain <= 1) break;
       const clipped = `${m.content.slice(0, Math.max(0, remain - 1))}…`;
-      used += clipped.length;
       out.unshift({ role: m.role, content: clipped });
       break;
     }
@@ -518,8 +517,9 @@ export async function* runAgent(opts: {
   const prompt = typeof opts.prompt === 'string' ? opts.prompt.trim() : '';
   if (!prompt) throw new Error('prompt 为空：请输入问题后再调用 Agent');
 
-  let context = '';
-  let trace: LlmTraceStep[] = [];
+  // try / catch 两条路径都会赋值，初始值纯属噪声
+  let context: string;
+  let trace: LlmTraceStep[];
   try {
     const r = await Promise.resolve(opts.retrieve(prompt));
     context = typeof r?.context === 'string' ? r.context : '';

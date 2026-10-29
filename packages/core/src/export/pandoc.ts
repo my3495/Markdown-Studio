@@ -35,7 +35,11 @@ export function buildPandocArgs(
   format: PandocFormat,
   opts: PandocOptions = {}
 ): string[] {
-  const args = [inputPath, '-o', outputPath, '-t', format === 'latex' ? 'latex' : format];
+  const args = [inputPath, '-o', outputPath];
+  // pdf 由输出扩展名推断，pandoc **没有** pdf writer：
+  // `-t pdf` 会直接报 `Unknown output format pdf`，整条命令必然失败。
+  // latex 的 writer 名与格式名一致，其余 docx/epub 亦然。
+  if (format !== 'pdf') args.push('-t', format === 'latex' ? 'latex' : format);
   if (opts.extraArgs?.length) args.push(...opts.extraArgs);
   return args;
 }
@@ -55,13 +59,15 @@ export function buildPandocCommand(
 
 /**
  * 极简 Markdown → LaTeX（无 Pandoc 时的回退）。
- * 覆盖标题、粗斜体、代码块、列表、链接；复杂文档仍建议本机 Pandoc。
+ * 覆盖标题、粗斜体、代码块、有序/无序列表、链接；复杂文档仍建议本机 Pandoc。
  */
 export function markdownToLatexLite(md: string): string {
   const lines = md.replace(/\r\n/g, '\n').split('\n');
   const out: string[] = [
     '\\documentclass[12pt]{article}',
-    '\\usepackage[utf8]{inputenc}',
+    // ctex 同时解决中文与 UTF-8 编码：缺了它，中文文档用 pdflatex 必然编译失败
+    // （xelatex 也需要它来配置 CJK 字体）。纯西文文档加载无副作用。
+    '\\usepackage[UTF8]{ctex}',
     '\\usepackage{hyperref}',
     '\\usepackage{graphicx}',
     '\\usepackage{listings}',
@@ -69,12 +75,20 @@ export function markdownToLatexLite(md: string): string {
     '',
   ];
   let inCode = false;
-  let inList = false;
+  let listEnv: 'itemize' | 'enumerate' | null = null;
+
   const closeList = () => {
-    if (inList) {
-      out.push('\\end{itemize}');
-      inList = false;
+    if (listEnv) {
+      out.push(`\\end{${listEnv}}`);
+      listEnv = null;
     }
+  };
+  /** 切换到目标列表环境：同类复用，异类先闭合再开（避免 itemize 套 enumerate 错位） */
+  const openList = (kind: 'itemize' | 'enumerate') => {
+    if (listEnv === kind) return;
+    closeList();
+    out.push(`\\begin{${kind}}`);
+    listEnv = kind;
   };
 
   for (const raw of lines) {
@@ -103,11 +117,15 @@ export function markdownToLatexLite(md: string): string {
       continue;
     }
     if (/^[-*+]\s+/.test(raw)) {
-      if (!inList) {
-        out.push('\\begin{itemize}');
-        inList = true;
-      }
+      openList('itemize');
       out.push(`\\item ${convertInline(raw.replace(/^[-*+]\s+/, ''))}`);
+      continue;
+    }
+    // 有序列表：`1.` / `1)` 开头；数字后面必须跟分隔符，避免把 `2024. 计划` 之外
+    // 的小数（`2.2 说明`）误判为列表项
+    if (/^\d+[.)]\s+/.test(raw)) {
+      openList('enumerate');
+      out.push(`\\item ${convertInline(raw.replace(/^\d+[.)]\s+/, ''))}`);
       continue;
     }
     if (!raw.trim()) {

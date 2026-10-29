@@ -398,7 +398,7 @@ export function AgentChat({ onClose }: { onClose: () => void }) {
       patch(asstId, (m) => ({ ...m, trace: [...(m.trace ?? []), step] }));
     const addDelta = (text: string) => patch(asstId, (m) => ({ ...m, text: m.text + text }));
     /** 已属于最终回答的累计长度；工具轮结束时把超出部分（模型前言）移到 preamble */
-    let answerLen = 0;
+    const answerLen = 0;
     const splitPreamble = () =>
       patch(asstId, (m) => {
         const seg = m.text.slice(answerLen);

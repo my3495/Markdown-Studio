@@ -245,18 +245,27 @@ export function Toolbar({ editorView, onSlides, onOpenFolder, folderActive }: Pr
   };
   const onExportPdf = () => {
     if (!active) return;
-    printPdf(active.content, {
+    void printPdf(active.content, {
       title: active.name,
       mode: s.theme === 'dark' ? 'dark' : 'light',
       footer: s.footer,
       renderOpts: getRenderOptions(s),
+    }).then((r) => {
+      // 弹窗被拦截时用户会以为「点了没反应」，必须给明确提示
+      if (!r.ok) {
+        toast(t(locale, r.reason === 'popup-blocked' ? 'pdfPopupBlocked' : 'pdfPrintFailed'), {
+          tone: 'danger',
+        });
+      }
     });
     setExportOpen(false);
   };
   const onShareCard = () => {
     if (!active) return;
     const text = getSelectedText() || active.content.slice(0, 200);
-    void exportShareCard(text, active.name);
+    void exportShareCard(text, active.name).then((ok) => {
+      if (!ok) toast(t(locale, 'shareCardFailed'), { tone: 'danger' });
+    });
     setMoreOpen(false);
   };
   const onShareLink = async () => {

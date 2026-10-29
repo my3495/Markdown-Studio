@@ -212,7 +212,8 @@ export function createSandboxSession(vault: Vault, opts: ToolsOptions = {}): San
       } catch (e) {
         // 与 acceptAll 对齐：失败项保留在队列中，便于用户拒绝或重试
         const detail = e instanceof Error ? e.message : String(e);
-        throw new Error(`sandbox accept 失败：${key}：${detail}`);
+        // 保留原始错误作为 cause：上层日志能同时看到调用栈与上下文
+        throw new Error(`sandbox accept 失败：${key}：${detail}`, { cause: e });
       }
       queue.delete(key);
       return true;

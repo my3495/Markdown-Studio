@@ -25,7 +25,15 @@ export function McpDesktopSection({ showTitle = true }: { showTitle?: boolean })
     void mcpStatus().then(setInfo).catch(() => setInfo(null));
   }, [available]);
 
-  if (!available) return null;
+  if (!available) {
+    // 之前这里直接 return null，导致 Web 端点「MCP 服务」是一个完全空白的面板，
+    // 用户看不出是「环境不支持」还是「加载失败」。给一句明确说明。
+    return (
+      <p className="vault-empty" style={{ margin: '8px 0' }}>
+        {t(locale, 'mcpDesktopOnly')}
+      </p>
+    );
+  }
 
   const start = async () => {
     const ws = workspace.trim();

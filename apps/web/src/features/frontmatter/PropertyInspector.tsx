@@ -22,8 +22,11 @@ export function PropertyInspector() {
   const [draftKey, setDraftKey] = useState('');
   const [draftVal, setDraftVal] = useState('');
 
+  // 依赖写成 `active?.content` 而不是 `active`：文档对象每次 set 都会换新引用，
+  // 用它当依赖会让解析在无关字段变化时重跑。函数体只读 content，语义上更精确。
   const parsed = useMemo(
     () => (active ? parseFrontmatter(active.content) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [active?.content, activeId]
   );
   const pairs = parsed ? listPairs(parsed) : [];

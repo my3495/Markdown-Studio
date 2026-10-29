@@ -110,9 +110,9 @@ export function radialLayout(
       if (si == null || ti == null) continue;
       const a = pos.get(e.source)!;
       const b = pos.get(e.target)!;
-      let dx = a.x - b.x;
-      let dy = a.y - b.y;
-      let dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
       const force = (dist * dist) / k;
       const fx = (dx / dist) * force;
       const fy = (dy / dist) * force;

@@ -16,13 +16,16 @@ describe('主题与配色分区', () => {
   beforeEach(resetState);
   afterEach(cleanup);
 
-  it('T-01 渲染全部令牌：4 个颜色、字体下拉、4 个数值、重置按钮', () => {
+  it('T-01 渲染全部区块：主题模式 + 4 个颜色 + 字体下拉 + 4 个数值下拉 + 重置按钮', () => {
     const { container } = render(<ThemeSection />);
+    expect(container.querySelectorAll('.theme-mode-item').length).toBe(3);
     expect(container.querySelectorAll('input[type="color"]').length).toBe(4);
     expect(container.querySelectorAll('select.ui-select-font').length).toBe(1);
-    // 4 个数值输入；字体自定义输入框只在「自定义…」后才出现
-    expect(container.querySelectorAll('input[type="text"]').length).toBe(4);
-    expect(container.querySelectorAll('.ui-field').length).toBe(9);
+    // 排版四项改为下拉选择：不再有任何文本框，用户无从手写 CSS 片段
+    expect(container.querySelectorAll('input[type="text"]').length).toBe(0);
+    expect(container.querySelectorAll('input[type="range"]').length).toBe(0);
+    expect(container.querySelectorAll('select.ui-select-token').length).toBe(4);
+    expect(container.querySelectorAll('.ui-field').length).toBe(10);
     expect(screen.getByRole('button', { name: '重置主题令牌' })).toBeTruthy();
   });
 
@@ -31,10 +34,35 @@ describe('主题与配色分区', () => {
     const accent = screen.getByLabelText('强调色') as HTMLInputElement;
     expect(accent.value).toBe('#a9501d');
 
-    // 深色模式入口在工具栏，这里直接改 store 验证令牌联动
-    act(() => useSettings.setState({ theme: 'dark' }));
+    // 主题模式已归位到本分区，点「深色」即可（无需再去工具栏）
+    fireEvent.click(screen.getByRole('button', { name: '深色' }));
+    expect(useSettings.getState().theme).toBe('dark');
     expect((screen.getByLabelText('强调色') as HTMLInputElement).value).toBe('#df8a4e');
     expect((screen.getByLabelText('背景色') as HTMLInputElement).value).toBe('#1a1815');
+  });
+
+  it('T-09 主题模式三分段：切换写入 store，高亮与 aria-pressed 跟随', () => {
+    const { container } = render(<ThemeSection />);
+    const buttons = [...container.querySelectorAll('.theme-mode-item')];
+    expect(buttons.map((b) => b.textContent)).toEqual(['浅色', '深色', '跟随系统']);
+    // 初始为 system
+    expect(container.querySelector('.theme-mode-item.active')?.textContent).toBe('跟随系统');
+    expect(screen.getByRole('button', { name: '跟随系统' }).getAttribute('aria-pressed')).toBe(
+      'true'
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '浅色' }));
+    expect(useSettings.getState().theme).toBe('light');
+    expect(container.querySelector('.theme-mode-item.active')?.textContent).toBe('浅色');
+    expect(screen.getByRole('button', { name: '浅色' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: '跟随系统' }).getAttribute('aria-pressed')).toBe(
+      'false'
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '深色' }));
+    expect(useSettings.getState().theme).toBe('dark');
+    act(() => useSettings.setState({ theme: 'system' }));
+    expect(container.querySelector('.theme-mode-item.active')?.textContent).toBe('跟随系统');
   });
 
   it('T-03 选色写入 customVars，重复选色不会丢键', () => {
@@ -49,15 +77,52 @@ describe('主题与配色分区', () => {
     expect(vars()['--md-color-bg']).toBe('#fffdf7');
   });
 
-  it('T-04 数值输入写入并用空值恢复默认（不残留空串）', () => {
+  it('T-04 下拉选择写入规范值；选「跟随主题」即恢复默认且不残留空串', () => {
     render(<ThemeSection />);
-    const fontSize = screen.getByLabelText('字号') as HTMLInputElement;
+    const fontSize = screen.getByLabelText('字号') as HTMLSelectElement;
+    // 首项就是「跟随主题」，并带上主题真实默认值（不是空框 + 灰 placeholder）
+    expect(fontSize.value).toBe('');
+    expect(fontSize.options[0].textContent).toBe('跟随主题（当前 16px）');
+
     fireEvent.change(fontSize, { target: { value: '18px' } });
     expect(vars()['--md-font-size']).toBe('18px');
 
     fireEvent.change(fontSize, { target: { value: '' } });
     expect(vars()['--md-font-size']).toBeUndefined();
     expect(Object.keys(vars())).toHaveLength(0);
+  });
+
+  it('T-10 选项只给合法档位：长度项自带 px，行高不带单位', () => {
+    render(<ThemeSection />);
+    const sizeValues = [...(screen.getByLabelText('字号') as HTMLSelectElement).options]
+      .map((o) => o.value)
+      .filter(Boolean);
+    expect(sizeValues).toContain('16px');
+    expect(sizeValues.every((v) => /^\d+px$/.test(v))).toBe(true);
+
+    const widthValues = [...(screen.getByLabelText('内容宽度') as HTMLSelectElement).options]
+      .map((o) => o.value)
+      .filter(Boolean);
+    expect(widthValues).toContain('780px');
+    // 越界值（旧版手输能写进去的 2000px）根本不在选项里
+    expect(widthValues).not.toContain('2000px');
+
+    const lhValues = [...(screen.getByLabelText('行高') as HTMLSelectElement).options]
+      .map((o) => o.value)
+      .filter(Boolean);
+    expect(lhValues).toContain('1.75');
+    expect(lhValues.every((v) => /^\d(\.\d+)?$/.test(v))).toBe(true);
+  });
+
+  it('T-11 档位外的历史值作为额外选项显示，下拉不会变空白且可改回档位', () => {
+    useSettings.setState({ customVars: { '--md-font-size': '19px' } });
+    render(<ThemeSection />);
+    const fontSize = screen.getByLabelText('字号') as HTMLSelectElement;
+    expect(fontSize.value).toBe('19px');
+    expect([...fontSize.options].some((o) => o.value === '19px')).toBe(true);
+
+    fireEvent.change(fontSize, { target: { value: '20px' } });
+    expect(vars()['--md-font-size']).toBe('20px');
   });
 
   it('T-05 字体下拉：选预设写入，切默认删除，自定义值保留原文', () => {

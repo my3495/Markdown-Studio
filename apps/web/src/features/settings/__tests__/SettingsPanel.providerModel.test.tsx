@@ -25,6 +25,14 @@ vi.mock('@md-studio/core', () => ({
   CUSTOM_THEME_TOKENS: [{ key: '--accent', label: 'Accent', kind: 'color', placeholder: '' }],
   getThemeVariables: () => ({}),
   sanitizeCustomVars: (v: Record<string, string>) => v,
+  // settings store / 主题分区在模块加载期就会调用这几个令牌工具函数
+  getTokenDef: () => undefined,
+  normalizeCustomVars: (v: Record<string, string>) => v,
+  normalizeTokenValue: (_k: string, v: string) => v,
+  parseTokenValue: (_k: string, v: string) => ({ ok: true, number: Number(v), value: v, inRange: true }),
+  serializeTokenValue: (_k: string, n: number) => String(n),
+  formatTokenNumber: (_k: string, n: number) => String(n),
+  clampTokenValue: (_k: string, n: number) => String(n),
   // models.ts 仅用到 baseUrl / kind；此处返回通用值即可（fetch 已被 stub 拒绝）
   resolveProvider: () => ({ baseUrl: '', needsKey: false, kind: 'openai' as const }),
 }));

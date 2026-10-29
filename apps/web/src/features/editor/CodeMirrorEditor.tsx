@@ -133,6 +133,7 @@ interface Opts {
   resolvedDark: boolean;
   vimMode: boolean;
   spellCheck: boolean;
+  showLineNumbers: boolean;
 }
 
 interface Props {
@@ -142,9 +143,24 @@ interface Props {
   editorRef: React.MutableRefObject<EV | null>;
   /** 视图创建/销毁时通知外层：ref.current 变化不会触发重渲染，需要状态化订阅 */
   onReady?: (view: EV | null) => void;
+  /**
+   * 交出「立即把视图文本同步到 store」的能力。
+   *
+   * 输入是防抖 150ms 才 onChange 的（避免每键都跑一次渲染），因此 store 里的
+   * content 在打字后的一小段时间内是落后的。保存这类「必须拿到最新文本」的动作
+   * 得先调它 flush，否则会存下旧内容 —— 打完字立刻 Ctrl+S 的丢字故障。
+   */
+  flushRef?: React.MutableRefObject<(() => void) | null>;
 }
 
-export function CodeMirrorEditor({ docId, content, onChange, editorRef, onReady }: Props) {
+export function CodeMirrorEditor({
+  docId,
+  content,
+  onChange,
+  editorRef,
+  onReady,
+  flushRef,
+}: Props) {
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
   const settings = useSettings();
@@ -154,6 +170,7 @@ export function CodeMirrorEditor({ docId, content, onChange, editorRef, onReady 
     resolvedDark: settings.theme === 'dark',
     vimMode: settings.vimMode,
     spellCheck: settings.spellCheck,
+    showLineNumbers: settings.showLineNumbers,
   });
   const contentRef = useRef(content);
   contentRef.current = content;
@@ -171,10 +188,17 @@ export function CodeMirrorEditor({ docId, content, onChange, editorRef, onReady 
   const typeComp = useRef(new Compartment());
   const vimComp = useRef(new Compartment());
   const spellComp = useRef(new Compartment());
+  const gutterComp = useRef(new Compartment());
+
+  /**
+   * 行号 gutter 与「当前行高亮」捆绑：两者都依赖同一列 gutter，单独留一个
+   * 会让关闭行号后仍出现一条空白竖条。空数组即彻底移除，正文左移补上空位。
+   */
+  const gutterExtensions = (show: boolean) =>
+    show ? [lineNumbers(), highlightActiveLineGutter()] : [];
 
   const buildExtensions = (o: Opts) => [
-    lineNumbers(),
-    highlightActiveLineGutter(),
+    gutterComp.current.of(gutterExtensions(o.showLineNumbers)),
     highlightActiveLine(),
     drawSelection(),
     history(),
@@ -229,8 +253,25 @@ export function CodeMirrorEditor({ docId, content, onChange, editorRef, onReady 
     editorRef.current = view;
     // 调试/E2E 句柄：CM6 无官方 DOM→view 查找 API，挂到根节点便于外部读取文档模型
     (view.dom as unknown as { __md_view?: EV }).__md_view = view;
+
+    if (flushRef) {
+      flushRef.current = () => {
+        // 取消尚未触发的防抖 emit，直接把视图文本推给 store
+        if (pendingEmitRef.current) {
+          window.clearTimeout(pendingEmitRef.current);
+          pendingEmitRef.current = null;
+        }
+        const text = view.state.doc.toString();
+        const stored = useDocuments.getState().docs[docIdRef.current]?.content ?? '';
+        if (text === stored) return;
+        lastEmittedRef.current = text;
+        onChangeRef.current(text);
+      };
+    }
+
     onReadyRef.current?.(view);
     return () => {
+      if (flushRef) flushRef.current = null;
       if (pendingEmitRef.current) {
         window.clearTimeout(pendingEmitRef.current);
         pendingEmitRef.current = null;
@@ -267,6 +308,9 @@ export function CodeMirrorEditor({ docId, content, onChange, editorRef, onReady 
     const current = view.state.doc.toString();
     if (content === current) return;
     view.dispatch({ changes: minimalChange(current, content) });
+    // editorRef 是 ref（身份稳定），且本 effect 只应在外部 content 变化时执行；
+    // lastEmittedRef / pendingEmitRef 同理不能进依赖，否则打字中会自我回写。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content]);
 
   // 设置变更：Compartment 动态重配置（ADR-03 主题切换）
@@ -285,6 +329,7 @@ export function CodeMirrorEditor({ docId, content, onChange, editorRef, onReady 
       resolvedDark: resolvedDark === 'dark',
       vimMode: settings.vimMode,
       spellCheck: settings.spellCheck,
+      showLineNumbers: settings.showLineNumbers,
     };
     view.dispatch({
       effects: [
@@ -302,6 +347,7 @@ export function CodeMirrorEditor({ docId, content, onChange, editorRef, onReady 
         spellComp.current.reconfigure(
           settings.spellCheck ? spellLinter(() => useSettings.getState().spellCheck) : []
         ),
+        gutterComp.current.reconfigure(gutterExtensions(settings.showLineNumbers)),
       ],
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -311,6 +357,7 @@ export function CodeMirrorEditor({ docId, content, onChange, editorRef, onReady 
     settings.typewriterMode,
     settings.vimMode,
     settings.spellCheck,
+    settings.showLineNumbers,
   ]);
 
   return <div id="cm-host" className="cm-host" style={{ height: '100%', overflow: 'auto' }} />;

@@ -2,8 +2,14 @@ import { describe, it, expect } from 'vitest';
 import {
   CUSTOM_THEME_TOKENS,
   FONT_FAMILY_PRESETS,
+  clampTokenValue,
+  getTokenDef,
   isAllowedThemeToken,
+  normalizeCustomVars,
   normalizeFontFamily,
+  normalizeTokenValue,
+  parseTokenValue,
+  serializeTokenValue,
   sanitizeCustomVars,
 } from '../src/renderer/themeTokens';
 
@@ -70,5 +76,85 @@ describe('themeTokens', () => {
       expect(normalizeFontFamily(once)).toBe(once);
       expect(once.split(', ').length).toBe(preset.split(',').length);
     }
+  });
+});
+
+describe('数值令牌：不再依赖人工手写 CSS 片段', () => {
+  it('四个排版令牌都带输入约束（类型/范围/步进）', () => {
+    for (const key of ['--md-font-size', '--md-line-height', '--md-max-width', '--md-radius']) {
+      const spec = getTokenDef(key)?.input;
+      expect(spec).toBeTruthy();
+      expect(spec!.min).toBeLessThan(spec!.max);
+      expect(spec!.step).toBeGreaterThan(0);
+    }
+    // 行高是无单位倍数，长度类则固定 px
+    expect(getTokenDef('--md-line-height')!.input!.type).toBe('ratio');
+    expect(getTokenDef('--md-font-size')!.input!.unit).toBe('px');
+    expect(getTokenDef('--md-color-accent')!.input).toBeUndefined();
+  });
+
+  it('缺单位/带空格/全角数字都归一到规范值', () => {
+    expect(normalizeTokenValue('--md-font-size', '16')).toBe('16px');
+    expect(normalizeTokenValue('--md-font-size', '16 px')).toBe('16px');
+    expect(normalizeTokenValue('--md-font-size', '１６ｐｘ')).toBe('16px');
+    expect(normalizeTokenValue('--md-max-width', '780')).toBe('780px');
+    expect(serializeTokenValue('--md-radius', 12)).toBe('12px');
+  });
+
+  it('行高只接受无单位倍数：带 px/% 判错（否则行距不随字号缩放）', () => {
+    expect(normalizeTokenValue('--md-line-height', '1.75')).toBe('1.75');
+    expect(parseTokenValue('--md-line-height', '1.75px')).toEqual({ ok: false, reason: 'unit' });
+    expect(parseTokenValue('--md-line-height', '175%')).toEqual({ ok: false, reason: 'unit' });
+    expect(normalizeTokenValue('--md-line-height', '1.75px')).toBeNull();
+  });
+
+  it('越界只收敛不改语义，并把 inRange 交给界面提示', () => {
+    expect(normalizeTokenValue('--md-font-size', '99')).toBe('24px');
+    expect(normalizeTokenValue('--md-radius', '-4')).toBe('0px');
+    expect(clampTokenValue('--md-line-height', 3)).toBe('2.2');
+    const parsed = parseTokenValue('--md-max-width', '2000');
+    expect(parsed.ok).toBe(true);
+    expect(parsed.ok && parsed.inRange).toBe(false);
+    expect(parsed.ok && parsed.value).toBe('2000px');
+  });
+
+  it('非数字与空值被拒绝（不写 store）', () => {
+    expect(parseTokenValue('--md-font-size', '大')).toEqual({ ok: false, reason: 'not-number' });
+    expect(parseTokenValue('--md-font-size', '')).toEqual({ ok: false, reason: 'empty' });
+    expect(normalizeTokenValue('--md-font-size', '')).toBeNull();
+    expect(normalizeTokenValue('--md-font-size', '16em')).toBeNull();
+  });
+
+  it('历史持久化数据读入时归一化：补单位、收敛、丢弃脏值', () => {
+    expect(
+      normalizeCustomVars({
+        '--md-font-size': '18',
+        '--md-line-height': '1.5',
+        '--md-max-width': ' 780px ',
+        '--md-radius': '100',
+        '--md-color-accent': '#ff0000',
+        '--md-font-size-bad': '18px',
+      })
+    ).toEqual({
+      '--md-font-size': '18px',
+      '--md-line-height': '1.5',
+      '--md-max-width': '780px',
+      '--md-radius': '24px',
+      '--md-color-accent': '#ff0000',
+    });
+    // 解析不了的历史脏值直接丢弃，回退主题默认而不是把无效 CSS 注入 :root
+    expect(normalizeCustomVars({ '--md-font-size': '16em' })).toEqual({});
+  });
+
+  it('字体令牌不参与数值解析（保留原文，避免打字时被吃掉空格）', () => {
+    expect(parseTokenValue('--md-font-family', 'PingFang SC')).toEqual({
+      ok: true,
+      number: Number.NaN,
+      value: 'PingFang SC',
+      inRange: true,
+    });
+    expect(normalizeCustomVars({ '--md-font-family': 'PingFang SC, sans' })).toEqual({
+      '--md-font-family': 'PingFang SC, sans',
+    });
   });
 });

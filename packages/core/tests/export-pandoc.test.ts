@@ -34,9 +34,11 @@ describe('路径与扩展名', () => {
 });
 
 describe('argv 与命令字符串', () => {
-  it('E-P04 latex 用 -t latex，其余用同名 writer', () => {
+  it('E-P04 latex 用 -t latex，其余用同名 writer；pdf 不带 -t', () => {
     expect(buildPandocArgs('a.md', 'a.tex', 'latex')).toEqual(['a.md', '-o', 'a.tex', '-t', 'latex']);
     expect(buildPandocArgs('a.md', 'a.docx', 'docx')).toEqual(['a.md', '-o', 'a.docx', '-t', 'docx']);
+    // pandoc 没有 pdf writer：-t pdf 会直接报 Unknown output format
+    expect(buildPandocArgs('a.md', 'a.pdf', 'pdf')).toEqual(['a.md', '-o', 'a.pdf']);
   });
 
   it('E-P05 extraArgs 追加在末尾、顺序保持', () => {
@@ -93,10 +95,15 @@ describe('markdownToLatexLite（无 pandoc 时的回退）', () => {
     expect(tex).toContain('\\href{https://example.com}{站点}');
   });
 
-  it('E-P13 有序列表当前不转 enumerate（lite 仅覆盖无序列表）', () => {
-    const tex = markdownToLatexLite('1. 第一\n2. 第二');
-    expect(tex).not.toContain('\\begin{enumerate}');
-    expect(tex).toContain('1. 第一');
+  it('E-P13 有序列表转 enumerate（1. 与 1) 都识别）', () => {
+    const dotted = markdownToLatexLite('1. 第一\n2. 第二');
+    expect(dotted).toContain('\\begin{enumerate}');
+    expect(dotted).toContain('\\item 第一');
+    expect(dotted).toContain('\\item 第二');
+
+    const paren = markdownToLatexLite('1) 甲\n2) 乙');
+    expect(paren).toContain('\\begin{enumerate}');
+    expect(paren).toContain('\\item 甲');
   });
 
   it('E-P14 无序列表包裹 itemize，连续项只在首尾各开合一次', () => {

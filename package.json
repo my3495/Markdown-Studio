@@ -13,23 +13,28 @@
     "build": "pnpm --filter @md-studio/web build",
     "test": "pnpm --filter @md-studio/core test",
     "test:all": "pnpm -r test",
-    "e2e": "pnpm --filter @md-studio/web exec playwright test",
+    "e2e": "pnpm --filter @md-studio/web e2e",
     "e2e:ui": "pnpm --filter @md-studio/web exec playwright test --ui",
     "typecheck": "pnpm -r typecheck",
-    "lint": "eslint . --ext .ts,.tsx",
-    "ci": "pnpm install --frozen-lockfile && pnpm typecheck && pnpm test",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "ci": "pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint && pnpm test",
     "mcp:build": "pnpm --filter @md-studio/mcp build",
     "update:serve": "pnpm --filter @md-studio/update-server start",
     "update:manifest": "pnpm --filter @md-studio/update-server manifest"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.64.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.6.4",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^20.11.0",
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "jsdom": "^25.0.1",
     "typescript": "^5.4.0",
+    "typescript-eslint": "^8.72.1",
     "vitest": "^1.6.0"
   }
 }

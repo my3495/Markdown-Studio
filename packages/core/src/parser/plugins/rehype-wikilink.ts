@@ -1,6 +1,7 @@
 import { visit } from 'unist-util-visit';
 
-const WIKILINK_RE = /\[\[([^\[\]]+?)\]\]/g;
+// 字符类里的 `[` 无需转义（只有 `]` 需要）：写成 [^[\]] 与 [^\[\]] 等价
+const WIKILINK_RE = /\[\[([^[\]]+?)\]\]/g;
 
 /**
  * 将 hast 文本中的 [[target|alias]] 转为可点击链接元素：

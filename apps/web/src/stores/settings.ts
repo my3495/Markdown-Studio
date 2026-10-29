@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 import {
+  getTokenDef,
+  normalizeCustomVars,
+  normalizeTokenValue,
   sanitizeCustomVars,
   type NumberStyle,
   type RenderOptions,
@@ -124,6 +127,8 @@ interface SettingsState {
   recipesOnSave: boolean;
   /** B3：英文拼写检查（轻量词表） */
   spellCheck: boolean;
+  /** 编辑器左侧行号 gutter；关闭后正文区更干净（专注写作 / 窄栏时省宽度） */
+  showLineNumbers: boolean;
   /** 代码块语法高亮（Shiki）。关闭后预览区代码块按纯文本渲染（修复 A：
    *  RenderOptions.highlight 此前在 UI 层硬编码为 true，用户无法关闭） */
   codeHighlight: boolean;
@@ -151,6 +156,7 @@ interface SettingsState {
   setVimMode: (v: boolean) => void;
   setRecipesOnSave: (v: boolean) => void;
   setSpellCheck: (v: boolean) => void;
+  setShowLineNumbers: (v: boolean) => void;
   setCodeHighlight: (v: boolean) => void;
   setReadingMode: (v: boolean) => void;
   toggleReadingMode: () => void;
@@ -175,7 +181,8 @@ export const useSettings = create<SettingsState>((set, get) => ({
   focusMode: persisted.focusMode ?? false,
   typewriterMode: persisted.typewriterMode ?? false,
   locale: persisted.locale ?? 'zh-CN',
-  customVars: persisted.customVars ?? {},
+  // 历史数据可能存着 `16`、`1.5` 这类手写值：读入时统一归一化，越界收敛、脏值丢弃
+  customVars: normalizeCustomVars(persisted.customVars ?? {}),
   footer: { enabled: true, ...persisted.footer },
   agent: {
     provider: persisted.agent?.provider ?? viewPrefs.agentProvider ?? 'ollama',
@@ -192,6 +199,8 @@ export const useSettings = create<SettingsState>((set, get) => ({
   vimMode: persisted.vimMode ?? false,
   recipesOnSave: persisted.recipesOnSave ?? false,
   spellCheck: persisted.spellCheck ?? false,
+  // 默认显示行号：与既有行为一致，老用户升级后观感不变
+  showLineNumbers: persisted.showLineNumbers ?? true,
   codeHighlight: persisted.codeHighlight ?? true,
   readingMode: persisted.readingMode ?? false,
   // 老版本可能持久化了 'agent' mode —— 与 'build' 行为完全一致，归并到 'build'
@@ -216,7 +225,13 @@ export const useSettings = create<SettingsState>((set, get) => ({
       const next = { ...s.customVars };
       // 清空输入 = 恢复默认：直接删键，别留空串（空值写不进 CSS，会让 :root 残留上一次的值）
       if (!v.trim()) delete next[k];
-      else next[k] = v;
+      else if (getTokenDef(k)?.input) {
+        // 数值令牌必须能解析：非法输入（如行高写成 `1.75px`）不覆盖上一个有效值，
+        // 否则无效 CSS 会写进 :root，界面看着「改了没反应」，排版却已经回退到继承值
+        const normalized = normalizeTokenValue(k, v);
+        if (normalized === null) return s;
+        next[k] = normalized;
+      } else next[k] = v;
       return { customVars: sanitizeCustomVars(next) };
     }),
   clearCustomVars: () => set({ customVars: {} }),
@@ -240,6 +255,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
   setVimMode: (vimMode) => set({ vimMode }),
   setRecipesOnSave: (recipesOnSave) => set({ recipesOnSave }),
   setSpellCheck: (spellCheck) => set({ spellCheck }),
+  setShowLineNumbers: (showLineNumbers) => set({ showLineNumbers }),
   setCodeHighlight: (codeHighlight) => set({ codeHighlight }),
   setReadingMode: (readingMode) => set({ readingMode }),
   toggleReadingMode: () => set((s) => ({ readingMode: !s.readingMode })),

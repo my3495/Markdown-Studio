@@ -14,7 +14,8 @@ export interface WikiLink {
   heading?: string;
 }
 
-const WIKILINK_RE = /\[\[([^\[\]]+?)\]\]/g;
+// 字符类里的 `[` 无需转义（只有 `]` 需要）：写成 [^[\]] 与 [^\[\]] 等价
+const WIKILINK_RE = /\[\[([^[\]]+?)\]\]/g;
 
 /** 从文本中解析所有 wikilink */
 export function parseWikilinks(text: string): WikiLink[] {
@@ -25,7 +26,7 @@ export function parseWikilinks(text: string): WikiLink[] {
   while ((m = WIKILINK_RE.exec(text))) {
     const inner = m[1];
     const pipe = inner.indexOf('|');
-    let left = pipe >= 0 ? inner.slice(0, pipe) : inner;
+    const left = pipe >= 0 ? inner.slice(0, pipe) : inner;
     const alias = pipe >= 0 ? inner.slice(pipe + 1).trim() : undefined;
     let target = left.trim();
     let heading: string | undefined;

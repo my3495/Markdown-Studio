@@ -22,6 +22,14 @@ export interface VaultNote {
   updatedAt?: number;
 }
 
+/**
+ * 混合检索中语义命中的最低余弦相似度。
+ *
+ * 实测（本地离线嵌入器）：真正相关的命中在 0.5 上下，无关文本集中在 0.15 以下。
+ * 取 0.25 既能滤掉噪声，又给「只有语义相关性、没有关键词重合」的结果留出余地。
+ */
+export const SEMANTIC_MIN_SCORE = 0.25;
+
 export interface VaultSearchResult {
   note: VaultNote;
   score: number;
@@ -134,7 +142,12 @@ export class Vault {
   async searchHybrid(query: string, limit = 20): Promise<VaultSearchResult[]> {
     const kw = this.search(query, limit);
     if (!this.embedder) return kw;
-    const sem = await this.searchSemantic(query, limit);
+    // 语义命中必须过相关性阈值：SemanticIndex 只过滤了 cosine > 0，
+    // 无关查询（打错字、乱码）也能拿到 0.01–0.1 的正相似度，
+    // 合并进结果就会让「搜索无结果」永不出现，用户看到一堆不相干笔记。
+    const sem = (await this.searchSemantic(query, limit)).filter(
+      (r) => r.score >= SEMANTIC_MIN_SCORE
+    );
     const seen = new Set(kw.map((r) => r.note.id));
     const merged = [...kw];
     for (const r of sem) {
