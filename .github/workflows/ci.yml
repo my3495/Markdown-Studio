@@ -162,9 +162,33 @@ jobs:
     permissions:
       contents: write
     steps:
+      # 需要仓库源码里的生成脚本（apps/update-server/src/generate-manifest.mjs）
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+      # 生成 Tauri 自动更新清单 latest.json。
+      # 仅当配置了更新签名私钥（secrets.TAURI_SIGNING_PRIVATE_KEY）时才执行：
+      # 未配置密钥的「未签名发布」会优雅跳过，不影响 Release 产出。
+      # 密钥就绪后，即使 createUpdaterArtifacts 关闭，也会在此用 tauri signer 补签 .sig。
+      - name: Generate latest.json for updater
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::notice::未配置 secrets.TAURI_SIGNING_PRIVATE_KEY，跳过 latest.json 生成（未签名发布）"
+            exit 0
+          fi
+          mkdir -p release-staging
+          # 收集 Windows 安装包与其 .sig（若有）
+          find artifacts/desktop-windows -path '*/bundle/nsis/*' \( -name '*.exe' -o -name '*.exe.sig' \) -exec cp -t release-staging/ {} + 2>/dev/null || true
+          find artifacts/desktop-windows -path '*/bundle/msi/*' \( -name '*.msi' -o -name '*.msi.sig' \) -exec cp -t release-staging/ {} + 2>/dev/null || true
+          node apps/update-server/src/generate-manifest.mjs \
+            --release-dir release-staging \
+            --base-url "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}"
+          cp release-staging/latest.json artifacts/latest.json
       - uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**/*
