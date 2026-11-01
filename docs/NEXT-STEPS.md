@@ -167,3 +167,18 @@
 - 下一步候选：**全量 libgit2**（或 isomorphic-git，本环境 pnpm install 卡住）、**真 WYSIWYG**、GitHub/GitLab 深度同步（PR/冲突）、tldraw 图片/框架形状持久化、**预览虚拟化**（收益重估：reconcile 只占约 24ms/次，虚拟化主要价值在首屏与滚动绘制，不再是输入延迟的解药）、启用真实签名 Secrets。
 - ~~输入延迟再往下压的唯一手段是增量解析~~ **已完成**（见 2026-10-28 条目）：块级复用 + 后续插件全量重跑，含 16 例等价性回归。若要继续压低，剩余空间在「克隆 mdast（约 15ms）+ 必须全量重跑的 sanitize/shiki/CJK/data-line（约 70ms）」以及跨线程结构化克隆，均已接近当前架构下限。
 - 基线质量：core vitest（587 单测）+ web vitest（140）+ web/core/ui/mcp/desktop typecheck 全绿 + web build。
+- **2026-10-31（选中文字 → Agent 改写，D 类增强）**：
+  - **交互链路**：选中文字 → 气泡「让 Agent 修改」→ 输入指令 → 定位映射到正文区间 → 调模型生成 → 词级 diff 弹窗 → 接受/拒绝/重新生成 → 写回正文。任何一步失败都不改正文。
+  - **定位映射**（`packages/core/src/agent/rewrite.ts` 的 `locateSelection`）：三级降级 —— ① 原文精确命中；② 归一化命中（`normalizeWithMap` 去掉 `**`/`` ` ``/链接地址/行首 `#`/`>`/列表符号，并保留「归一化字符 → 原文下标」映射，替换时标记留在区间外）；③ 最长前缀 + 最长后缀分别锚定（退化命中）。多处命中用预览 `data-line` 行号择优，并回传 `ambiguous` 供 UI 提示。选区跨行/被排版插入空格时，额外做一次「去空格」匹配。
+  - **diff**：`diffTokens` 按词级切分（CJK 逐字、拉丁按词），LCS 表超 100 万格退化为「公共前后缀 + 整段替换」；`diffStat` 给「−N / +M」摘要。
+  - **语言一致性**：`detectInputLang` 依据**用户输入的指令**（假名→ja，汉字→zh，否则 en）决定界面与提示词语种，模型 system prompt / 标签同步为同语种，因此中文下指令 → 中文确认弹窗与中文提示词。
+  - **应用**：接受时先 `flushEditor()`，再用发起时的正文快照比对；若期间正文被改动则按原文重新定位，定位不到就提示且不写入（避免改到别处）。
+  - **UI**：`features/agent/SelectionRewrite.tsx`（气泡/指令面板，Esc 取消、`AbortController` 可控）+ `features/agent/RewriteConfirmDialog.tsx`（diff + 接受/拒绝/重新生成，Esc=拒绝）；挂在 `App.tsx` 的 `.app-preview` 内。
+  - **模拟人工验证（13/13 通过）**：`apps/web/.tmp-e2e/human-like.mjs`（临时脚本，未入库）。与下面的 e2e 不同，它**不注入 localStorage、不 route 拦截**：真点工具栏「设置」→ AI/Agent → 从 `/api/tags` 拉到的下拉里选模型、真键盘输入正文、真鼠标拖选预览文字、真点按钮，请求发给本地起的假 Ollama 服务（`:11434`，走真实 HTTP + NDJSON 流式解析）。这条路径额外验证了「发给模型的 system/user 提示语言随输入语言切换」。
+  - 假 Ollama **必须带 CORS 头**（`Access-Control-Allow-Origin` + OPTIONS 204），否则浏览器直接拦掉跨端口请求，界面只表现为「点了生成没反应 → 失败」，容易被误判成功能缺陷。
+  - **人形路径暴露并修复的两个真实缺陷**（`page.fill` 这类不触发 mousedown/mouseup 的写法发现不了）：
+    - ① 气泡与指令面板共用同一个 ref 判断「点击别处收起」，二者互斥挂载时 detach(null)/attach(node) 时序不可靠，会把点气泡/点输入框误判成点别处 → 改为按 class 判断（`closest('.rw-bubble, .rw-panel')`）。
+    - ② 点指令输入框会折叠预览里的文档选区，150ms 后的延时捕获把它当成「没有选区」而**自我收起面板** → 延时捕获在 `input/running/confirm` 阶段不再重新判定选区（用 `phaseRef` 读当前阶段，避免闭包过期）。
+  - **测试**：core `tests/agent/rewrite.test.ts`（35 例：归一化映射、三级定位、行号择优、diff、语言判定、提示词/回包解析）+ web `features/agent/__tests__/selectionRewrite.test.tsx`（12 例，含上述两个缺陷的回归：气泡可点击、点输入框不自我收起、指令输入、diff 增删渲染、回调、英文 locale、定位失败提示）+ web e2e `apps/web/e2e/selection-rewrite.spec.ts`（5 例真实浏览器：中/英双语弹窗、多处命中歧义与行号择优、Esc 取消、未配置模型分支）。i18n 三语（zh/en/ja）新增 `rw*` 文案键。
+  - **e2e 无需真实模型**：spec 里用 `page.route` 拦截 `/api/chat` 返回伪造的 Ollama NDJSON 流，因此在没有 key/模型的机器上也能回归整条链路（`pnpm --filter @md-studio/web exec playwright test e2e/selection-rewrite.spec.ts`，约 16s）。
+  - **坑位备忘（Playwright）**：spec 文件里**注释中出现 `**/` 或反引号会让 Playwright 解析 `page.evaluate` 失败**（块注释被 `*/` 提前结束，后续代码被当作字符串 → `Unterminated string constant`，表象是 "No tests found"）。写 e2e 时注释里不要出现 `*/` 序列与反引号。另：预览 DOM 会把段落拆成多个文本节点，按节点偏移选文字会因结构变化选错，必须先按段落完整文本定位子串再映射回节点。

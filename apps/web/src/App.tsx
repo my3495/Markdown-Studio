@@ -19,6 +19,7 @@ import { ScrollSync } from './features/sync/ScrollSync';
 import { SideRail } from './features/shell/SideRail';
 import { PanelView, PANEL_META } from './features/shell/PanelView';
 import { AgentChat } from './features/agent/AgentChat';
+import { SelectionRewrite } from './features/agent/SelectionRewrite';
 import { CommandPalette } from './features/command/CommandPalette';
 import { useVault } from './stores/vault';
 import { useUi } from './stores/ui';
@@ -902,6 +903,19 @@ export function App() {
                 </div>
               )}
             </PreviewBoundary>
+            {/* 预览区选中文字 → 让 Agent 改：定位映射到正文区间，diff 确认后才写回 */}
+            <SelectionRewrite
+              containerRef={previewRef}
+              getContent={() => {
+                const st = useDocuments.getState();
+                return st.activeId ? st.docs[st.activeId]?.content ?? '' : '';
+              }}
+              onApply={(next) => {
+                flushEditor();
+                const st = useDocuments.getState();
+                if (st.activeId) void st.updateContent(st.activeId, next);
+              }}
+            />
           </div>
 
             </>

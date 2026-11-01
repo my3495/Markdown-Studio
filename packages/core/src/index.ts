@@ -41,6 +41,7 @@ export * from './agent/sandbox';
 export * from './agent/idempotency';
 export * from './agent/context';
 export * from './agent/llm';
+export * from './agent/rewrite';
 export * from './agent/toolschema';
 export * from './agent/fc';
 export * from './mcp/protocol';
